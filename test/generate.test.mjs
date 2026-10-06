@@ -39,7 +39,7 @@ test('Nano Banana generates five square PNGs with Google authentication', async 
     return Response.json({candidates:[{content:{parts:[{text:'Generated'},{inlineData:{mimeType:'image/png',data:fixture()}}]}}]});
   }});
   assert.equal(manifest.provider,'gemini'); assert.equal(manifest.status,'complete'); assert.equal(calls.length,5);
-  assert.ok(calls.every(c=>c.url.startsWith('https://generativelanguage.googleapis.com/')&&c.headers['x-goog-api-key']==='google-test-secret'&&c.body.generationConfig.responseFormat.image.aspectRatio==='1:1'&&c.body.generationConfig.responseFormat.image.imageSize==='1K'));
+  assert.ok(calls.every(c=>c.url.startsWith('https://generativelanguage.googleapis.com/')&&c.headers['x-goog-api-key']==='google-test-secret'&&c.body.generationConfig.imageConfig.aspectRatio==='1:1'&&c.body.generationConfig.imageConfig.imageSize==='1K'));
   assert.equal(new Set(calls.map(c=>c.body.contents[0].parts[0].text)).size,5);
   assert.equal((await readdir(runDir)).filter(f=>f.endsWith('.png')).length,5);
   assert.ok(!(await readFile(join(runDir,'manifest.json'),'utf8')).includes('google-test-secret'));
