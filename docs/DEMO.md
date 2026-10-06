@@ -20,6 +20,8 @@ What we claim, and nothing more:
 
 The seeded board has 6 mock screens (onboarding, sign up, paywall, home, settings, empty garden), 6 highlight boxes, 6 ranked findings (4 verified, 2 unverified), all functional: the paywall close button is unresponsive, the first tap on Create account is ignored, the reminder count does not update after watering, the reminder time reverts to 8:00 AM, the Home badge disagrees with the list, and Add (+) on an empty garden does nothing. The content lives in `canvas/scripts/demo-findings.mjs` and the seed refuses to post a finding the filter would drop (`--dry-run` prints the ops without posting). The board also has a run-recording slot, a legend and a fix-first list. It is fictional data. The video is a 5-second stand-in clip, so the finding timestamps run 0:01 to 0:05. Say so if asked.
 
+> **Fresh clone or a new laptop?** `runs/` is git-ignored, so `runs/demo` below only exists on the laptop that recorded it. The one-command equivalents, which also start the canvas and need no keys, are in [RUNBOOK.md](RUNBOOK.md): `npm run teardown -- --mock --fixture fernly --live` (the seeded board below) and `npm run teardown -- --mock --live` (a committed recorded run of ignura.com plus a sample launch kit). The board itself is at `<canvas>/?view=canvas`.
+
 ### Seed commands
 
 ```sh

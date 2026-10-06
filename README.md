@@ -2,6 +2,22 @@
 
 AstraHack is an early-stage system of agents that explores a startup's website or app, checks how it works, and turns what it learns into useful product and marketing outputs.
 
+## Quickstart
+
+Node 22.18 or newer and git. No keys and no Chrome are needed for the first run.
+
+```sh
+git clone https://github.com/jawadjalal/astrahack.git && cd astrahack
+npm run setup                          # installs the canvas app (the only package with dependencies)
+cp .env.example .env                   # optional: add OPENAI_API_KEY / GEMINI_API_KEY
+npm run doctor                         # checks this machine and prints exactly what to fix
+npm run teardown -- --mock --open      # a full board: recorded run + launch kit, canvas started for you
+npm run teardown -- https://ignura.com --kit --live   # the real chain on a URL (Chrome; OPENAI_API_KEY for the Astra agent)
+npm run smoke:prod                     # smoke test of the deployed canvas at https://ignura.com/astrahack
+```
+
+The board is at http://localhost:3000/?view=canvas. Full walkthrough, who owns what, troubleshooting and what to do if your machine dies: [docs/RUNBOOK.md](docs/RUNBOOK.md). The 60-second demo script: [docs/DEMO.md](docs/DEMO.md).
+
 ## Initial MVP
 
 Given access to a website or app and a short brief, the agents should be able to:

@@ -344,6 +344,7 @@ function openBrowser(u) {
 // ---------------------------------------------------------------------------------------------------------------
 async function main() {
   console.log(`AstraHack teardown  mode=${mode}${url ? `  url=${url}` : ''}  canvas=${CANVAS}${flags['dry-run'] ? '  (dry run)' : ''}`);
+  if (mode === 'mock' && !isLocalCanvas() && !flags.canvas) throw new Error(`CANVAS_URL points at a remote board (${CANVAS}). Sample data should not land on a shared board by accident: pass --canvas ${CANVAS} explicitly if you mean it, or unset CANVAS_URL for the local canvas.`);
   step(1, 'canvas');
   const canvas = await ensureCanvas();
   console.log(shouldClear() ? '    the board is cleared first (local canvas; --no-clear keeps it)' : '    existing board content is kept (shared/remote canvas; pass --clear to wipe it)');
