@@ -30,7 +30,70 @@ The computer-use agent is the source of observed product knowledge for QA and pr
 
 For one supported website or app, a run should complete a small set of important user journeys and produce evidence that another person can review: what the agent did, what it saw, where it got stuck, and what it learned. The QA findings should be reproducible, and the promotional outputs should refer to features the agent actually found in the product.
 
-This README defines the initial product direction. Implementation details, supported platforms, and setup instructions will be added as the MVP takes shape.
+## Computer-use runner: first vertical slice
+
+The repository now includes a dependency-free Node.js runner. It controls a real Chromium page through the Chrome DevTools Protocol (CDP), executes a declared user journey, and writes a machine-readable evidence bundle. A website launches in its own temporary Chrome profile. An Electron app can be attached through a CDP port exposed by that app. This is a practical foundation for an agent to choose and run journeys; the current runner does **not** autonomously decide which product flows matter.
+
+### Requirements
+
+- Node.js 22 or newer.
+- Google Chrome or another Chromium executable for website runs.
+- For video, an `ffmpeg` executable with MJPEG input and VP8/WebM output. Video is optional.
+- For an Electron app, an already running renderer with CDP enabled (for example, start an app you control with `--remote-debugging-port=9222`). Some apps disable this flag or require a different launch method.
+
+No `npm install` is needed. The runner uses Node's built-in WebSocket client.
+
+### Run a website
+
+Copy and edit [`examples/website.json`](examples/website.json). Set `target.url`, then describe the journeys and assertions that matter for that product.
+
+```sh
+ASTRAHACK_CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+  node bin/astrahack.js examples/website.json --output runs/example
+```
+
+Use `--headed` to watch the browser. Pass `--ffmpeg /path/to/ffmpeg` (or set `ASTRAHACK_FFMPEG`) and set `"video": true` on a journey to record it. The captured WebM contains the browser viewport, sampled at 2 frames per second. It has no audio.
+
+### Run an Electron app
+
+Copy and edit [`examples/electron.json`](examples/electron.json). Set `target.cdpPort` and optionally `target.pageMatch` to select the renderer by URL or title. Start the app with remote debugging enabled, then run:
+
+```sh
+node bin/astrahack.js examples/electron.json --output runs/electron-check --ffmpeg /path/to/ffmpeg
+```
+
+Electron mode controls the renderer's page content. It cannot inspect native menus, file pickers, permission prompts, or other operating-system UI. General native macOS, Windows, iOS, and Android apps are not yet supported.
+
+### Journey format
+
+Each `journeys[]` entry has a `name`, optional `video`, and ordered `steps`. Supported actions are:
+
+| Action | Fields | Effect |
+| --- | --- | --- |
+| `goto` | `url` | Navigate to a URL, relative to the target website URL when applicable. |
+| `click` | `selector` | Click the visible element at its screen position. |
+| `fill` | `selector`, `value` or `valueFromEnv` | Focus and type into a form field. Use environment variables for credentials. |
+| `press` | `key` | Press `Enter`, `Tab`, `Escape`, or `Backspace`. |
+| `waitFor` | `selector`, optional `timeoutMs` | Wait for an element to exist. |
+| `assertText` | `text` | Require text somewhere on the page. |
+| `assertUrl` | `contains` | Require a URL substring. |
+| `wait` | `ms` | Pause up to 30 seconds. |
+| `observe` | none | Capture the current screen and page summary. |
+
+Any step may include `settleMs`, `expected`, `failureSummary`, and `severity`. A failing step stops that journey, captures evidence, and creates a QA finding. The next journey runs in the same session. Journey authors should add an initial `goto` when a flow needs a clean starting page.
+
+### Evidence and handoff
+
+Every run writes `report.json`, `screenshots/*.png`, and optional `video/*.webm` under the output directory. The report contains:
+
+- `product`: observed URL, title, description, headings, visible controls, and a short excerpt of page text.
+- `journeys`: every action, outcome, timestamp, page observation, and screenshot path.
+- `findings`: failed assertions/actions with expected and actual behavior, reproduction steps, severity, and evidence path.
+- `assets`: screenshot and video manifest for downstream marketing agents.
+
+The report records observed facts only. Downstream agents should treat marketing claims and audience assumptions as proposals until verified. `fill` values are redacted in the JSON, but screenshots and video can show sensitive content; use test accounts and review evidence before sharing it. Runs are ignored by Git.
+
+Exit status is `0` for a passing run, `1` for QA findings, and `2` for setup or runtime errors. Run `npm test` for the local fixture integration test.
 
 ## Planning notes
 

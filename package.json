@@ -1,0 +1,12 @@
+{
+  "name": "astrahack-computer-use",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": { "astrahack": "./bin/astrahack.js" },
+  "scripts": {
+    "run": "node bin/astrahack.js",
+    "test": "node --test"
+  },
+  "engines": { "node": ">=22" }
+}

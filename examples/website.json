@@ -1,0 +1,17 @@
+{
+  "name": "Example product walkthrough",
+  "target": {
+    "type": "website",
+    "url": "https://example.com"
+  },
+  "journeys": [
+    {
+      "name": "Landing page",
+      "video": false,
+      "steps": [
+        { "action": "assertText", "text": "Example Domain", "expected": "The landing page explains the product" },
+        { "action": "observe" }
+      ]
+    }
+  ]
+}
