@@ -151,3 +151,13 @@ The docs in `docs/` describe the creative slice; the computer-use scope and usag
 ## Nano Banana (default)
 
 Set `GEMINI_API_KEY` in your local `.env`, then run `npm run generate -- --prompt-file brief.txt`. Generates five distinct 1024×1024 PNGs using Google Nano Banana. Obtain the key from https://aistudio.google.com/api-keys; image generation requires model access and available quota. Use `--dry-run` without a key. To switch later, set `OPENAI_API_KEY` and pass `--provider openai`. Override the model with `--model`. Keys are never stored in output manifests.
+
+## Generate X and Reddit GTM campaigns
+
+Turn the same product brief into detailed text campaigns, alongside the image creatives:
+
+```sh
+npm run campaigns -- --prompt-file brief.txt
+```
+
+Uses `GEMINI_API_KEY` and a separate text model (`GEMINI_TEXT_MODEL`). Produces Markdown and JSON containing channel strategy, finished post drafts, a 14-day calendar, conversion tracking, experiments and launch checklists. Use `--channel x` or `--channel reddit` to select one channel, or `--dry-run` to prepare prompts without API calls. See [campaign generation and integration](docs/CAMPAIGNS.md).
