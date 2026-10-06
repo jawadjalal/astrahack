@@ -406,7 +406,7 @@ async function main() {
       await sleep(op.type === "update" ? 0 : DELAY_MS);
     }
   }
-  console.log("Done. Open the canvas; Present mode is the Present button, bottom left.");
+  console.log("Done. Open the canvas; Present mode is the Present button in the toolbar (Shift+P).");
 }
 
 main();
