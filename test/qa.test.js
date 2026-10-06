@@ -7,8 +7,9 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { crawlSite, normalizeLink } from '../src/crawl.js';
 import { runQaAgent, executeComputerAction } from '../src/qa-agent.js';
+import { findChrome } from '../src/chrome-path.js';
 
-const chrome = process.env.ASTRAHACK_CHROME || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+const chrome = findChrome() || '';
 
 test('same-origin link normalization excludes external and fragment duplicates', () => {
   assert.equal(normalizeLink('/features#top', 'https://site.test/', 'https://site.test'), 'https://site.test/features');
