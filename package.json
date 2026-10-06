@@ -27,6 +27,7 @@
     "generate": "node --env-file-if-exists=.env generate.mjs",
     "campaigns": "node --env-file-if-exists=.env campaigns.mjs",
     "ugc": "node --env-file-if-exists=.env bin/ugc.js",
+    "leads": "node --env-file-if-exists=.env bin/leads.js",
     "worker": "node bin/web-worker.js",
     "test": "node --test \"test/*.test.js\" \"test/*.test.mjs\" \"agent/test/*.test.mjs\" \"canvas/test/*.test.mjs\"",
     "test:canvas": "npm run mcp:test --prefix canvas",
