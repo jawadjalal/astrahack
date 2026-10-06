@@ -31,19 +31,23 @@ export interface KitOptions {
   srcFor?: (filename: string) => string | undefined;
   /** natural pixel size by ad filename, for exact aspect ratios */
   sizes?: Record<string, { w: number; h: number }>;
-  /** ids that exist on the canvas (e.g. step-1 ... step-N). UGC cards arrow to evidence only when its step id is in here. */
+  /** ids that exist on the canvas (e.g. step-1 ... step-N, or run-ab12cd34ef56-step-1 when push-run scoped them). UGC cards arrow to evidence only when its step id is in here. */
   stepIds?: Iterable<string> | ((id: string) => boolean);
-  /** evidence asset path (as in ugc-plan.json) -> canvas id. Default: leading digits of the file name, 003-x.png -> step-3 */
+  /** id prefix of the teardown the evidence lives in, e.g. "run-ab12cd34ef56-" (push-run namespaces its ids per run). Default "". */
+  stepPrefix?: string;
+  /** evidence asset path (as in ugc-plan.json) -> canvas id. Default: leading digits of the file name, 003-x.png -> `${stepPrefix}step-3` */
   stepIdFor?: (assetPath: string) => string | undefined;
-  /** build a `say` op from a caption; undefined/null result = op not supported (see detectSayOp) */
-  say?: ((text: string) => Op | null | undefined) | null;
+  /** build a `say` op (a speech bubble hung beside `target`) from a caption; null/undefined = op not supported (see detectSayOp) */
+  say?: ((text: string, target?: string) => Op | null | undefined) | null;
+  /** emit `group` ops so each post set / the UGC cards move as one. Only when the contract has the op (see supportsOp). */
+  group?: boolean;
   /** banner with the kit title and counts (default true; the MCP tools that add one lane pass false) */
   banner?: boolean;
   /** end with focus ops (default true) */
   focus?: boolean;
   /** Reddit drafts are 200-400 words; the card shows this many characters (default 700) */
   redditBodyChars?: number;
-  /** max evidence arrows per UGC card (default 3) */
+  /** max evidence arrows per UGC card (default 2; every extra line is another thing to read across the board) */
   maxEvidenceArrows?: number;
 }
 
@@ -104,7 +108,7 @@ function textHeight(text: string, w: number, lineH = 24, charW = 9.6): number {
   return text.split("\n").reduce((n, p) => n + Math.max(1, Math.ceil(p.length / cpl)), 0) * lineH;
 }
 
-type Local = { ops: Op[]; ids: string[]; w: number; h: number };
+type Local = { ops: Op[]; ids: string[]; w: number; h: number; groups?: { id: string; ids: string[] }[] };
 
 const textStyle = (id: string, size: "s" | "m" | "l" | "xl", extra: Record<string, unknown> = {}): Op => ({ type: "update", id, props: { font: "sans", size, ...extra } });
 
@@ -155,17 +159,28 @@ function gridOf(cards: { id: string; text: string; color: string }[], w: number,
 
 // ---------------------------------------------------------------- say feature detection
 
+type Schema = { safeParse: (v: unknown) => { success: boolean } } | null | undefined;
+
 /**
  * Feature-detect a `say` op in the local ops.ts contract. Pass the zod OpSchema from ops.ts.
- * Returns a builder (text -> op) or null when the contract has no `say` yet.
+ * Returns a builder (text, target? -> op) or null when the contract has no `say`.
+ * `target` hangs the bubble beside that element id (ops.ts: "pass target to hang it beside that element").
  */
-export function detectSayOp(opSchema: { safeParse: (v: unknown) => { success: boolean } } | null | undefined): ((text: string) => Op) | null {
+export function detectSayOp(opSchema: Schema): ((text: string, target?: string) => Op) | null {
   if (!opSchema) return null;
   for (const key of ["text", "message", "caption"]) {
-    if (opSchema.safeParse({ type: "say", [key]: "probe" }).success) return (text: string) => ({ type: "say", [key]: text }) as unknown as Op;
+    if (opSchema.safeParse({ type: "say", [key]: "probe" }).success) {
+      return (text: string, target?: string) => ({ type: "say", [key]: text, ...(target ? { target } : {}) }) as unknown as Op;
+    }
   }
   return null;
 }
+
+/** does the contract know this op type? e.g. supportsOp(OpSchema, { type: "group", ids: ["a", "b"] }) */
+export function supportsOp(opSchema: Schema, probe: Record<string, unknown>): boolean {
+  return !!opSchema && opSchema.safeParse(probe).success;
+}
+export const supportsGroup = (opSchema: Schema) => supportsOp(opSchema, { type: "group", ids: ["a", "b"] });
 
 // ---------------------------------------------------------------- ads
 
@@ -250,6 +265,7 @@ export function redditPostText(p: any, i: number, n: number, maxBody = 700): str
 
 function gtmLane(campaigns: { x?: any; reddit?: any }, opts: KitOptions): (Local & { kicker: string; xPosts: number; xThread: number; redditPosts: number }) | null {
   const ops: Op[] = [], ids: string[] = [];
+  const groups: { id: string; ids: string[] }[] = [];
   let y = 0, width = 0;
   const kickers: string[] = [];
   let xPosts = 0, xThread = 0, redditPosts = 0;
@@ -265,6 +281,7 @@ function gtmLane(campaigns: { x?: any; reddit?: any }, opts: KitOptions): (Local
     section("gtm-x-posts-title", `X  ·  ${plural(x.posts.length, "standalone post")}`);
     const g = gridOf(x.posts.map((p: any, i: number) => ({ id: `gtm-x-${slug(p.id ?? i + 1)}`, text: xPostText(p, i + 1, x.posts.length), color: "grey" })), X_CARD_W, 7);
     ops.push(...translate(g.ops, 0, y)); ids.push(...g.ids);
+    groups.push({ id: "kit-group-x-posts", ids: g.ids });
     y += g.h + ROW_GAP; width = Math.max(width, g.w);
   }
   if (x && Array.isArray(x.thread) && x.thread.length) {
@@ -274,6 +291,7 @@ function gtmLane(campaigns: { x?: any; reddit?: any }, opts: KitOptions): (Local
     const cards = x.thread.map((t: string, i: number) => ({ id: `gtm-x-thread-${i + 1}`, text: xThreadText(t, i + 1, n), color: "grey" }));
     const g = gridOf(cards, THREAD_CARD_W, 8, THREAD_GAP);
     ops.push(...translate(g.ops, 0, y)); ids.push(...g.ids);
+    groups.push({ id: "kit-group-x-thread", ids: g.ids });
     for (let i = 1; i < n; i++) {
       const aid = `kit-arrow-thread-${i}`;
       ops.push({ type: "add_arrow", id: aid, from: cards[i - 1].id, to: cards[i].id, color: "grey" });
@@ -288,10 +306,11 @@ function gtmLane(campaigns: { x?: any; reddit?: any }, opts: KitOptions): (Local
     section("gtm-reddit-posts-title", `Reddit  ·  ${plural(r.posts.length, "post draft")}`);
     const g = gridOf(r.posts.map((p: any, i: number) => ({ id: `gtm-reddit-${slug(p.id ?? i + 1)}`, text: redditPostText(p, i + 1, r.posts.length, opts.redditBodyChars ?? 700), color: "orange" })), REDDIT_CARD_W, 3);
     ops.push(...translate(g.ops, 0, y)); ids.push(...g.ids);
+    groups.push({ id: "kit-group-reddit-posts", ids: g.ids });
     y += g.h + ROW_GAP; width = Math.max(width, g.w);
   }
   if (!ids.length) return null;
-  return { ops, ids, w: width, h: Math.max(0, y - ROW_GAP), kicker: kickers.join("   |   "), xPosts, xThread, redditPosts };
+  return { ops, ids, groups, w: width, h: Math.max(0, y - ROW_GAP), kicker: kickers.join("   |   "), xPosts, xThread, redditPosts };
 }
 
 // ---------------------------------------------------------------- UGC concepts
@@ -301,6 +320,9 @@ const platformLabel = (p: unknown) => PLATFORM_LABEL[String(p)] ?? String(p ?? "
 const formatLabel = (f: unknown) => String(f ?? "").toUpperCase();
 
 const byId = (list: any): Map<string, any> => new Map((Array.isArray(list) ? list : []).filter((x: any) => x?.id).map((x: any) => [String(x.id), x]));
+
+/** run-ab12cd34ef56-step-5 -> step-5: the run prefix is plumbing, not something to read on a card */
+const shortId = (id: string) => id.replace(/^.*?(step-\d+)$/, "$1");
 
 export function ugcScriptText(s: any, plan: any, evidence: string[] = []): string {
   const hook = byId(plan?.hooks).get(String(s.hookId));
@@ -318,7 +340,7 @@ export function ugcScriptText(s: any, plan: any, evidence: string[] = []): strin
     if (b.shot) lines.push(`      shot: ${one(b.shot)}`);
   }
   if (s.cta) lines.push("", `CTA: ${one(s.cta)}`);
-  if (evidence.length) lines.push(`Evidence on the board: ${evidence.join(", ")}`);
+  if (evidence.length) lines.push(`Evidence on the board: ${evidence.map(shortId).join(", ")}`);
   return lines.filter((l, i) => l !== undefined && (l !== "" || lines[i - 1] !== "")).join("\n");
 }
 
@@ -327,20 +349,20 @@ export function ugcHookText(h: any, plan: any, evidence: string[] = []): string 
   const lines = [`HOOK  ·  ${formatLabel(h.format)}`, h.id ?? "", `"${one(h.text)}"`];
   if (h.visualOpener) lines.push(`Opens on: ${one(h.visualOpener)}`);
   if (angle?.name) lines.push(`Angle: ${one(angle.name)}`);
-  if (evidence.length) lines.push(`Evidence on the board: ${evidence.join(", ")}`);
+  if (evidence.length) lines.push(`Evidence on the board: ${evidence.map(shortId).join(", ")}`);
   return lines.filter(Boolean).join("\n");
 }
 
-export const defaultStepIdFor = (assetPath: string): string | undefined => {
+export const defaultStepIdFor = (assetPath: string, prefix = ""): string | undefined => {
   const m = /^0*(\d+)-/.exec(String(assetPath).split("/").pop() ?? "");
-  return m && Number(m[1]) > 0 ? `step-${Number(m[1])}` : undefined;
+  return m && Number(m[1]) > 0 ? `${prefix}step-${Number(m[1])}` : undefined;
 };
 
 /** evidence the card can point at: beat assetRefs first (labelled with the beat time), then the claimed features' evidence */
 function evidenceFor(s: any, plan: any, opts: KitOptions): { to: string; label?: string }[] {
   if (!opts.stepIds) return [];
   const have = typeof opts.stepIds === "function" ? opts.stepIds : ((set) => (id: string) => set.has(id))(new Set(opts.stepIds));
-  const idFor = opts.stepIdFor ?? defaultStepIdFor;
+  const idFor = opts.stepIdFor ?? ((p: string) => defaultStepIdFor(p, opts.stepPrefix ?? ""));
   const out: { to: string; label?: string }[] = [];
   const seen = new Set<string>();
   const take = (path: unknown, label?: string) => {
@@ -351,25 +373,27 @@ function evidenceFor(s: any, plan: any, opts: KitOptions): { to: string; label?:
   for (const b of Array.isArray(s.beats) ? s.beats : []) take(b?.assetRef, b?.t ? `beat ${b.t}` : undefined);
   const feats = byId(plan?.product?.observedFeatures);
   for (const fid of Array.isArray(s.featureIds) ? s.featureIds : []) for (const p of feats.get(String(fid))?.evidence ?? []) take(p, feats.get(String(fid))?.name ? clip(feats.get(String(fid)).name, 28) : undefined);
-  return out.slice(0, opts.maxEvidenceArrows ?? 3);
+  return out.slice(0, opts.maxEvidenceArrows ?? 2);
 }
 
 function ugcLane(plan: any, opts: KitOptions, widthHint: number): (Local & { kicker: string; count: number; arrows: number }) | null {
   const scripts: any[] = Array.isArray(plan?.scripts) ? plan.scripts : [];
   const usedHooks = new Set(scripts.map((s) => String(s.hookId)));
   const loneHooks: any[] = (Array.isArray(plan?.hooks) ? plan.hooks : []).filter((h: any) => h?.id && h?.text && !usedHooks.has(String(h.id)));
-  const anglesById = byId(plan?.angles);
   // evidence first: it goes into the card text and decides the layout
   const cards = [
     ...scripts.map((s) => ({ id: `ugc-${slug(s.id ?? s.title)}`, color: "violet", ev: evidenceFor(s, plan, opts), render: (ev: string[]) => ugcScriptText(s, plan, ev) })),
-    ...loneHooks.map((h) => ({ id: `ugc-${slug(h.id)}`, color: "violet", ev: evidenceFor({ featureIds: anglesById.get(String(h.angleId))?.featureIds ?? [] }, plan, opts), render: (ev: string[]) => ugcHookText(h, plan, ev) })),
+    // a hook no script uses has no beats to point at evidence: card only
+    ...loneHooks.map((h) => ({ id: `ugc-${slug(h.id)}`, color: "violet", ev: [] as { to: string; label?: string }[], render: (ev: string[]) => ugcHookText(h, plan, ev) })),
   ].map((c) => ({ id: c.id, color: c.color, ev: c.ev, text: c.render(c.ev.map((e) => e.to)) }));
   if (!cards.length) return null;
   const n = cards.length;
-  const withArrows = cards.some((c) => c.ev.length);
-  // Arrows run straight up to the teardown: one row keeps them from cutting through sibling cards.
+  const arrowCards = cards.filter((c) => c.ev.length).length;
+  const withArrows = arrowCards > 0;
+  // Arrows run straight up to the teardown: the cards that have them share the first row so they do not cut through
+  // sibling cards (scripts come first; hook-only cards wrap to the next row).
   // Without arrows: 3 across for a handful of concepts (a lone card on a second row looks like a mistake), 5 for a big plan.
-  const perRow = withArrows ? Math.min(n, 7) : n <= 3 ? n : n <= 6 ? 3 : n <= 8 ? 4 : 5;
+  const perRow = withArrows ? Math.min(Math.max(arrowCards, 3), 7) : n <= 3 ? n : n <= 6 ? 3 : n <= 8 ? 4 : 5;
   const cardW = withArrows ? UGC_CARD_W : Math.min(640, Math.max(UGC_CARD_W, Math.floor((Math.max(widthHint, 2300) - CARD_GAP * (perRow - 1)) / perRow)));
   const g = gridOf(cards, cardW, perRow);
   const ops = [...g.ops], ids = [...g.ids];
@@ -383,7 +407,7 @@ function ugcLane(plan: any, opts: KitOptions, widthHint: number): (Local & { kic
     });
   }
   const kicker = [plan?.product?.name, `${plural(scripts.length, "script")}, ${plural(Array.isArray(plan?.hooks) ? plan.hooks.length : 0, "hook")}`, plan?.campaign?.goal ? `goal: ${clip(plan.campaign.goal, 110)}` : ""].filter(Boolean).join(" · ");
-  return { ops, ids, w: g.w, h: g.h, kicker, count: cards.length, arrows };
+  return { ops, ids, groups: [{ id: "kit-group-ugc-cards", ids: g.ids }], w: g.w, h: g.h, kicker, count: cards.length, arrows };
 }
 
 // ---------------------------------------------------------------- single-card builders (MCP tools reuse these)
@@ -486,7 +510,7 @@ export function liveIds(ops: any[]): Set<string> {
     if (!op || typeof op !== "object") continue;
     if (op.type === "clear") live.clear();
     else if (op.type === "delete") live.delete(op.id);
-    else if (op.id && (String(op.type).startsWith("add_") || op.type === "annotate")) live.add(op.id);
+    else if (op.id && (String(op.type).startsWith("add_") || op.type === "annotate" || (op.type === "group" && !op.ungroup))) live.add(op.id);
   }
   return live;
 }
@@ -558,6 +582,14 @@ export function kitToOpsDetailed(input: KitInput, opts: KitOptions = {}): KitRes
     if (l.local.kicker) { ops.push(...textOps(`${lid}-kicker`, origin.x, top + 80, clip(l.local.kicker, 220), "s", contentW)); laneIds.push(`${lid}-kicker`); }
     ops.push(...translate(l.local.ops, origin.x, bodyTop));
     laneIds.push(...l.local.ids);
+    if (opts.group) {
+      // one group per post set / the UGC cards, made after the members exist and after their arrows (a group never holds arrows)
+      for (const gr of l.local.groups ?? []) {
+        if (gr.ids.length < 2) continue;
+        ops.push({ type: "group", id: gr.id, ids: gr.ids } as unknown as Op);
+        laneIds.push(gr.id);
+      }
+    }
     ids.push(...laneIds);
     laneRes.push({ key: l.key, title: l.title, box: { x: origin.x - LANE_PAD, y: top - LANE_PAD, w: laneW, h: h + LANE_PAD * 2 }, ids: laneIds });
     y = top + h + LANE_PAD + LANE_GAP;
@@ -568,7 +600,7 @@ export function kitToOpsDetailed(input: KitInput, opts: KitOptions = {}): KitRes
     : { x: origin.x, y: origin.y, w: 0, h: 0 };
 
   if (opts.say && lanes.length) {
-    const say = opts.say(`Launch kit is on the board: ${summary}. Cards are drafts to review, not published anything.`);
+    const say = opts.say(`Launch kit is on the board: ${summary}. All of it is draft: nothing has been published or posted anywhere.`, opts.banner !== false ? "kit-title" : `kit-lane-${lanes[0].key}-title`);
     if (say) ops.push(say);
   }
   if (opts.focus !== false && lanes.length) {

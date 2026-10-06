@@ -3,7 +3,7 @@
 // below whatever teardown is already there.
 //
 //   node canvas/scripts/push-kit.mjs --ads artifacts/ads-<run> --campaigns artifacts/campaigns-<run> --ugc ugc-plan.json \
-//        [--run runs/<teardown>] [--canvas URL] [--live] [--origin x,y] [--replace] [--dry-run]
+//        [--run runs/<teardown>] [--run-prefix run-ab12cd34ef56] [--canvas URL] [--live] [--origin x,y] [--replace] [--dry-run]
 //
 // Any subset of --ads / --campaigns / --ugc works; each missing input just leaves its lane out.
 // Canvas base: --canvas, else $CANVAS_URL, else http://localhost:3000. A base path is fine (https://ignura.com/astrahack).
@@ -11,6 +11,7 @@
 import { readFile, stat, readdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { createHash } from "node:crypto";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -25,6 +26,8 @@ const USAGE = `usage: node canvas/scripts/push-kit.mjs [--ads <dir|manifest.json
   --ugc         ugc-plan.json (contract: ugc/schema.js)
   --run         the teardown run dir/report.json already on the canvas: lets UGC cards arrow to its step-N screenshots
                 even offline (with a live canvas the step ids are read from GET /api/state)
+  --run-prefix  id prefix of the teardown (run-<12 hex>, as push-run scopes its ids). Default: found from --run, else the
+                latest teardown on the board
   --canvas URL  canvas base URL (default $CANVAS_URL or http://localhost:3000; base paths ok)
   --origin x,y  top-left of the kit in canvas px. Default: left edge of the existing content, 240px below its lowest element
   --live        post lane by lane with a pause so the canvas animates for a watcher (--delay ms overrides)
@@ -44,6 +47,7 @@ function parseArgs(argv) {
     else if (flag === "--campaigns") a.campaigns.push(next());
     else if (flag === "--ugc") a.ugc = next();
     else if (flag === "--run") a.run = next();
+    else if (flag === "--run-prefix") a.runPrefix = next();
     else if (flag === "--canvas") a.canvas = next();
     else if (flag === "--origin") a.origin = next();
     else if (flag === "--delay") a.delay = Number(next());
@@ -114,7 +118,7 @@ async function loadCampaigns(inputs) {
   return out;
 }
 
-/** step ids a teardown run produces (same rule as runToOps: step-<index> for every step with a screenshot) */
+/** what a teardown run put on the canvas: screenshot path -> step index, and the id prefix push-run scopes it with */
 async function loadRun(input) {
   const s = await stat(path.resolve(input)).catch(() => null);
   if (!s) throw new Error(`not found: ${input}`);
@@ -128,8 +132,21 @@ async function loadRun(input) {
   const bundle = report.report ?? report;
   const byPath = {};
   const steps = [...(bundle.journeys ?? []).flatMap((j) => j.steps ?? []), ...(bundle.steps ?? [])];
-  for (const st of steps) if (st?.screenshot && Number.isFinite(st.index)) byPath[st.screenshot] = `step-${st.index}`;
-  return byPath;
+  for (const st of steps) if (st?.screenshot && Number.isFinite(st.index)) byPath[st.screenshot] = st.index;
+  // same formula as push-run.mjs: run-<sha256 of "<report path>:<startedAt>", 12 hex>
+  const prefix = `run-${createHash("sha256").update(`${file}:${report.startedAt ?? ""}`).digest("hex").slice(0, 12)}-`;
+  return { byPath, prefix };
+}
+
+/** id prefixes of the teardowns on the board ("" for bare step-N ids, "run-ab12cd34ef56-" for push-run ones), latest last */
+function runPrefixesOnBoard(envelopes, live) {
+  const order = [];
+  for (const e of envelopes ?? []) {
+    const op = e?.op ?? e;
+    const m = op?.type === "add_image" && op.id && live.has(op.id) ? /^(.*?)step-\d+$/.exec(op.id) : null;
+    if (m) { const i = order.indexOf(m[1]); if (i >= 0) order.splice(i, 1); order.push(m[1]); }
+  }
+  return order;
 }
 
 async function main() {
@@ -150,7 +167,7 @@ async function main() {
   const campaigns = args.campaigns.length ? await loadCampaigns(args.campaigns) : null;
   const ugcPlan = args.ugc ? await readJson(path.resolve(args.ugc)) : null;
   if (ugcPlan && !Array.isArray(ugcPlan.scripts)) throw new Error(`${args.ugc} has no scripts[]: is it a ugc-plan.json?`);
-  const runPaths = args.run ? await loadRun(args.run) : {};
+  const run = args.run ? await loadRun(args.run) : null;
 
   const base = (args.canvas || process.env.CANVAS_URL || "http://localhost:3000").replace(/\/+$/, "");
   const api = (p) => `${base}/api${p}`;
@@ -224,21 +241,29 @@ async function main() {
     if (adFiles.length) process.stderr.write("\n");
   }
 
-  // ---- build
-  const stepIds = new Set([...boardIds].filter((id) => /^step-\d+$/.test(id)));
-  if (!envelopes || !stepIds.size) for (const id of Object.values(runPaths)) stepIds.add(id); // offline: trust --run
+  // ---- build. Which teardown's screenshots the UGC cards point at: --run-prefix, else the one --run produced, else the latest on the board
+  const prefixes = runPrefixesOnBoard(envelopes, live);
+  const stepPrefix = args.runPrefix
+    ? `${args.runPrefix.replace(/-$/, "")}-`
+    : run && (prefixes.includes(run.prefix) || !prefixes.length) ? run.prefix
+    : prefixes.length ? prefixes[prefixes.length - 1] : "";
+  if (run && prefixes.length && !prefixes.includes(run.prefix) && !args.runPrefix) console.error(`push-kit: --run's teardown is not on this board; pointing at the latest one (${stepPrefix || "step-N"}) instead`);
+  const stepIds = new Set([...boardIds].filter((id) => id.startsWith(stepPrefix) && /^step-\d+$/.test(id.slice(stepPrefix.length))));
+  if (!envelopes && run) for (const n of new Set(Object.values(run.byPath))) stepIds.add(`${stepPrefix}step-${n}`); // offline dry run: trust --run
   const result = kit.kitToOpsDetailed(
     { ads: ads?.manifest, campaigns, ugcPlan },
     {
-      origin, srcMap, sizes, stepIds,
-      stepIdFor: (p) => runPaths[p] ?? kit.defaultStepIdFor(p),
+      origin, srcMap, sizes, stepIds, stepPrefix,
+      stepIdFor: (p) => (run && p in run.byPath ? `${stepPrefix}step-${run.byPath[p]}` : kit.defaultStepIdFor(p, stepPrefix)),
       say: kit.detectSayOp(OpSchema),
+      group: kit.supportsGroup(OpSchema),
     },
   );
   if (!result.ids.length) throw new Error("nothing to place: the inputs held no ads, posts or UGC scripts");
-  // ops.ts may know `say` while a deployed canvas does not: post it on its own and shrug if refused
-  const sayOps = result.ops.filter((o) => o.type === "say");
-  const ops = [...deletes, ...result.ops.filter((o) => o.type !== "say")];
+  // ops.ts may know `say` / `group` while a deployed canvas does not: post those on their own after the cards, and shrug if refused
+  const optional = (o) => o.type === "say" || o.type === "group";
+  const sayOps = result.ops.filter(optional);
+  const ops = [...deletes, ...result.ops.filter((o) => !optional(o))];
 
   const c = result.counts;
   const summary = `${c.ads} ads, ${c.xPosts} X posts, ${c.xThread} thread parts, ${c.redditPosts} Reddit drafts, ${c.ugc} UGC concepts, ${c.evidenceArrows} evidence arrows`;
@@ -264,10 +289,13 @@ async function main() {
     }
     if (delay && i < batches.length - 1) await sleep(delay);
   }
-  for (const op of sayOps) {
-    const res = await fetch(api("/ops"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(op) }).catch(() => null);
-    if (res?.ok) posted++;
-    else console.error(`push-kit: this canvas did not accept the say caption (${res ? res.status : "unreachable"}); skipped`);
+  if (sayOps.length) {
+    // groups first, then the caption: one request each so an older canvas refusing one op does not drop the others
+    for (const op of [...sayOps.filter((o) => o.type === "group"), ...sayOps.filter((o) => o.type === "say")]) {
+      const res = await fetch(api("/ops"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(op) }).catch(() => null);
+      if (res?.ok) posted++;
+      else console.error(`push-kit: this canvas did not accept the ${op.type} op (${res ? res.status : "unreachable"}); skipped`);
+    }
   }
   console.log(`posted ${posted} ops (${summary}) -> ${base}`);
 }

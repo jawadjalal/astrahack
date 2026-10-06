@@ -18,7 +18,7 @@ import { generateCreatives, planCreatives } from "../../lib/generate.mjs";
 import { generateCampaigns, campaignSchema } from "../../lib/campaigns.mjs";
 import { checkGrounding } from "../../ugc/schema.js";
 import {
-  kitToOps, kitToOpsDetailed, detectSayOp, stateBounds, stateElements, liveIds, originBelow, isKitId, artDirection, defaultStepIdFor,
+  kitToOps, kitToOpsDetailed, detectSayOp, supportsGroup, stateBounds, stateElements, liveIds, originBelow, isKitId, artDirection, defaultStepIdFor,
 } from "../src/lib/kitToOps.ts";
 
 // The contract checks and the MCP test need canvas/node_modules (zod, the MCP SDK, tsx). The root `npm test` may run
@@ -399,12 +399,18 @@ test("UGC arrows go to evidence step ids only when they exist on the canvas", ()
   const arrows = ops.filter((o) => o.type === "add_arrow");
   assert.ok(arrows.length >= 5);
   assert.ok(arrows.every((a) => a.from.startsWith("ugc-") && STEPS.includes(a.to)));
-  // S1's beats point at 001 (hero) and 015 (plan); features F2/F1 add 015 (dup) and 011
+  // S1's beats point at 001 (hero) and 015 (plan); features F2/F1 would add 015 (dup) and 011, past the cap of two
   const s1 = arrows.filter((a) => a.from === "ugc-S1");
-  assert.deepEqual(s1.map((a) => a.to), ["step-1", "step-15", "step-11"]);
-  assert.ok(byId(ops)["ugc-S1"].text.endsWith("Evidence on the board: step-1, step-15, step-11"), "the card names the screenshots its arrows point at");
+  assert.deepEqual(s1.map((a) => a.to), ["step-1", "step-15"]);
+  const three = kitToOps({ ugcPlan: kit.ugcPlan }, { stepIds: STEPS, maxEvidenceArrows: 3 }).filter((o) => o.type === "add_arrow" && o.from === "ugc-S1");
+  assert.deepEqual(three.map((a) => a.to), ["step-1", "step-15", "step-11"]);
+  assert.ok(byId(ops)["ugc-S1"].text.endsWith("Evidence on the board: step-1, step-15"), "the card names the screenshots its arrows point at");
   assert.ok(arrows.every((a) => a.label === undefined), "no floating arrow labels over other cards");
-  assert.ok(arrows.filter((a) => a.from === "ugc-S1").length <= 3, "capped per card");
+  assert.ok(arrows.every((a) => arrows.filter((b) => b.from === a.from).length <= 2), "capped per card");
+  // run-scoped ids are shortened on the card
+  const scoped = kitToOps({ ugcPlan: kit.ugcPlan }, { stepIds: ["run-abc-step-1"], stepPrefix: "run-abc-" });
+  assert.ok(byId(scoped)["ugc-S1"].text.endsWith("Evidence on the board: step-1"));
+  assert.equal(scoped.find((o) => o.type === "add_arrow").to, "run-abc-step-1");
   // only some steps exist: only those get arrows
   const some = kitToOps({ ugcPlan: kit.ugcPlan }, { stepIds: new Set(["step-15"]) }).filter((o) => o.type === "add_arrow");
   assert.ok(some.length && some.every((a) => a.to === "step-15"));
@@ -478,6 +484,7 @@ test("say caption: only emitted when the contract has the op (feature detection)
   const hasSay = { safeParse: (v) => ({ success: v.type === "say" && typeof v.text === "string" }) };
   const make = detectSayOp(hasSay);
   assert.deepEqual(make("hi"), { type: "say", text: "hi" });
+  assert.deepEqual(make("hi", "kit-title"), { type: "say", text: "hi", target: "kit-title" });
   const alt = detectSayOp({ safeParse: (v) => ({ success: v.type === "say" && typeof v.message === "string" }) });
   assert.deepEqual(alt("hi"), { type: "say", message: "hi" });
 
@@ -488,10 +495,45 @@ test("say caption: only emitted when the contract has the op (feature detection)
   assert.equal(say.length, 1);
   assert.match(say[0].text, /5 ad concepts/);
   assert.equal(withSay.at(-1).type, "focus", "say lands before the final focus");
+  assert.equal(say[0].target, "kit-title", "the bubble hangs beside the banner");
+  const lone = kitToOps({ ads: kit.ads }, { srcMap: srcMap(), say: (t, target) => make(t, target), banner: false }).find((o) => o.type === "say");
+  assert.equal(lone.target, "kit-lane-ads-title", "no banner: it hangs beside the lane title");
+  assert.ok(say[0].text.length <= 600 && /nothing has been published/.test(say[0].text));
   // this checkout's own contract: if ops.ts grows a say op the live detection must find it
   const live = detectSayOp(OpSchema);
   if (live) assert.ok(OpSchema.safeParse(live("x")).success);
   else assert.equal(OpSchema.safeParse({ type: "say", text: "x" }).success, false);
+});
+
+test("group ops: one group per post set and one for the UGC cards, after their members; off unless the contract has them", { skip: NO_CONTRACT }, () => {
+  assert.equal(supportsGroup(OpSchema), true);
+  assert.equal(supportsGroup({ safeParse: () => ({ success: false }) }), false);
+  assert.ok(!kitToOps({ ...kit }, { srcMap: srcMap() }).some((o) => o.type === "group"), "off by default");
+  const ops = kitToOps({ ...kit }, { srcMap: srcMap(), group: true });
+  validOps(ops);
+  const groups = Object.fromEntries(ops.filter((o) => o.type === "group").map((o) => [o.id, o.ids]));
+  assert.deepEqual(Object.keys(groups).sort(), ["kit-group-reddit-posts", "kit-group-ugc-cards", "kit-group-x-posts", "kit-group-x-thread"]);
+  assert.equal(groups["kit-group-x-posts"].length, 7);
+  assert.equal(groups["kit-group-x-thread"].length, kit.campaigns.x.thread.length);
+  assert.equal(groups["kit-group-ugc-cards"].length, 6);
+  const order = ops.map((o) => o.type === "group" ? o.id : o.type === "update" ? undefined : o.id);
+  for (const [gid, members] of Object.entries(groups)) for (const m of members) assert.ok(order.indexOf(m) < order.indexOf(gid), `${m} exists before ${gid}`);
+  assert.ok(ops.filter((o) => o.type === "group").every((o) => isKitId(o.id)), "a re-push can find and delete them");
+  assert.ok(liveIds(ops.map((op) => ({ op }))).has("kit-group-x-posts"));
+});
+
+test("the real planner output (ugc/fixtures/ignura/ugc-plan.json) lays out: a card per script, arrows to step ids the teardown has", async () => {
+  const plan = JSON.parse(await readFile(join(teardownDir, "ugc-plan.json"), "utf8").catch(() => "null"));
+  if (!plan) return; // planner fixture not in this checkout
+  const report = JSON.parse(await readFile(join(teardownDir, "report.json"), "utf8"));
+  const stepIds = new Set(report.journeys.flatMap((j) => j.steps).filter((s) => s.screenshot).map((s) => `step-${s.index}`));
+  const r = kitToOpsDetailed({ ugcPlan: plan }, { stepIds });
+  validOps(r.ops);
+  const b = byId(r.ops);
+  for (const s of plan.scripts) assert.ok(b[`ugc-${s.id}`], `card for script ${s.id}`);
+  assert.equal(r.counts.ugc, plan.scripts.length + plan.hooks.filter((h) => !plan.scripts.some((s) => s.hookId === h.id)).length);
+  const arrows = r.ops.filter((o) => o.type === "add_arrow");
+  assert.ok(arrows.length > 0 && arrows.every((a) => stepIds.has(a.to)), "arrows go to real steps only; 000-initial.png is not a step");
 });
 
 test("stateBounds / originBelow: the kit starts below the lowest existing element, aligned to the content's left edge", () => {
@@ -616,6 +658,12 @@ test("push-kit uploads the PNGs, posts valid ops under a base path, and starts b
     const arrows = posted.filter((o) => o.type === "add_arrow" && o.from.startsWith("ugc-"));
     assert.ok(arrows.length >= 3 && arrows.every((a) => ["step-1", "step-15"].includes(a.to)));
     assert.match(r.out, /posted \d+ ops/);
+    if (OpSchema) {
+      assert.ok(posted.some((o) => o.type === "group" && o.id === "kit-group-x-posts"), "groups are posted once the cards exist");
+      const say = posted.filter((o) => o.type === "say");
+      assert.equal(say.length, OpSchema.safeParse({ type: "say", text: "x" }).success ? 1 : 0);
+      if (say.length) assert.equal(say[0].target, "kit-title");
+    }
 
     // a second push is refused until --replace
     const again = await run([...kitArgs(fx), "--canvas", c.url]);
@@ -637,6 +685,27 @@ test("push-kit uploads the PNGs, posts valid ops under a base path, and starts b
     assert.equal(o2.code, 0, o2.err);
     assert.equal(c.log.find((e) => e.op.id === "kit-lane-ads-title" && e.op.type === "add_shape").op.x, 500);
   } finally { c.close(); }
+});
+
+test("push-kit finds the teardown's screenshots under push-run's run-scoped ids; latest run wins, --run-prefix overrides", async () => {
+  const c = await mockCanvas();
+  try {
+    const step = (id, x) => ({ op: { type: "add_image", id, src: "/uploads/a.png", x, y: 0, w: 520, h: 325 } });
+    c.log.push(...[1, 15, 11].map((n, i) => ({ seq: i + 1, ...step(`run-aaaaaaaaaaaa-step-${n}`, i * 660) })));
+    c.log.push(...[1, 15].map((n, i) => ({ seq: i + 10, ...step(`run-bbbbbbbbbbbb-step-${n}`, i * 660) })));
+    const run = (extra = []) => run_(c, extra);
+    const latest = await run();
+    assert.equal(latest.code, 0, latest.err);
+    const posted = c.log.slice(5).map((e) => e.op);
+    const to = (ops) => new Set(ops.filter((o) => o.type === "add_arrow" && o.from.startsWith("ugc-")).map((o) => o.to));
+    assert.deepEqual([...to(posted)].sort(), ["run-bbbbbbbbbbbb-step-1", "run-bbbbbbbbbbbb-step-15"], "the latest run on the board, and only its steps");
+    const n0 = c.log.length;
+    const forced = await run(["--replace", "--run-prefix", "run-aaaaaaaaaaaa"]);
+    assert.equal(forced.code, 0, forced.err);
+    const toA = to(c.log.slice(n0).map((e) => e.op));
+    assert.ok(toA.has("run-aaaaaaaaaaaa-step-11") && [...toA].every((id) => id.startsWith("run-aaaaaaaaaaaa-step-")));
+  } finally { c.close(); }
+  function run_(c, extra) { return run([...kitArgs(fx), "--canvas", c.url, ...extra]); }
 });
 
 test("push-kit rejects an unreachable canvas with how to start it", async () => {
