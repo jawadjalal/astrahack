@@ -16,7 +16,7 @@ function png(width, height) {
 test('uploads selected PNGs and posts existing canvas ops; retry is idempotent', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'astrahack-canvas-'));
   const calls = { uploads: 0, ops: 0 };
-  const state = { seq: 0, ops: [] };
+  const state = { seq: 1, ops: [{ seq: 1, op: { type: 'add_image', id: 'raw-evidence', src: '/uploads/raw.png', x: 100, y: 0, w: 700, h: 500 } }] };
   const fakeFetch = async (url, init) => {
     if (url.endsWith('/api/state')) return { ok: true, json: async () => state };
     if (url.endsWith('/api/upload')) {
@@ -49,12 +49,13 @@ test('uploads selected PNGs and posts existing canvas ops; retry is idempotent',
     assert.equal(first.postedCount, 2);
     assert.equal(calls.uploads, 1);
     assert.equal(calls.ops, 1);
-    assert.deepEqual(state.ops.map(item => item.op.type), ['add_image', 'add_shape']);
-    assert.equal(state.ops[0].op.src, '/uploads/test-1.png');
-    assert.equal(state.ops[0].op.w, 480);
-    assert.equal(state.ops[0].op.h, 320);
-    assert.ok(state.ops[0].op.id.length <= 64);
-    assert.match(state.ops[1].op.text, /observed screens only/);
+    assert.deepEqual(state.ops.map(item => item.op.type), ['add_image', 'add_image', 'add_shape']);
+    assert.equal(state.ops[1].op.src, '/uploads/test-1.png');
+    assert.equal(state.ops[1].op.x, 960);
+    assert.equal(state.ops[1].op.w, 480);
+    assert.equal(state.ops[1].op.h, 320);
+    assert.ok(state.ops[1].op.id.length <= 64);
+    assert.match(state.ops[2].op.text, /observed screens only/);
     const retry = await publishFeatureCaptures(manifestPath, { canvasUrl, fetchImpl: fakeFetch });
     assert.equal(retry.postedCount, 0);
     assert.equal(calls.uploads, 1);
