@@ -207,10 +207,14 @@ async function main() {
 
   console.log(`uploading ${uploads.length} file(s) to ${base} ...`);
   let n = 0;
-  for (const u of uploads) {
-    srcMap[u.p] = await uploadOne(u);
-    process.stdout.write(`\r  ${++n}/${uploads.length}`);
-  }
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(4, uploads.length) }, async () => {
+    while (next < uploads.length) {
+      const u = uploads[next++];
+      srcMap[u.p] = await uploadOne(u);
+      process.stdout.write(`\r  ${++n}/${uploads.length}`);
+    }
+  }));
   if (uploads.length) process.stdout.write("\n");
 
   // ---- post ops. A group = one step (image + arrow + annotations + findings), so --live animates step by step.

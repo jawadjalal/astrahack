@@ -25,7 +25,7 @@ export function pushRun(output, { canvasUrl, runId, board = boardForRun(runId), 
   return new Promise((accept, reject) => {
     const child = spawn(process.execPath, [join(root, 'canvas/scripts/push-run.mjs'), output,
       '--canvas', canvasUrl, '--run-id', runId, '--board', board], { cwd: root, stdio: 'ignore', signal });
-    const timer = setTimeout(() => child.kill('SIGTERM'), 180_000);
+    const timer = setTimeout(() => child.kill('SIGTERM'), 600_000);
     child.once('error', error => { clearTimeout(timer); reject(error); });
     child.once('exit', code => {
       clearTimeout(timer);

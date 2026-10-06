@@ -209,3 +209,6 @@ aside.dock {
   .leaving { opacity: 0; }
   .astra, .field, .field::before, .cta, .arrow, .target, .textButton { transition: none !important; }
 }
+
+.canvasLoading { min-height: 100svh; display: grid; place-content: center; gap: 8px; padding: 24px; text-align: center; background: var(--paper); color: var(--ink); }
+.canvasLoading p { margin: 0; font: 600 26px/1.2 var(--f-hand); }

@@ -10,7 +10,14 @@ import RunStepper, { LAST_STEP, MiniSteps, RUN_STEPS, stepIndex } from "./RunSte
 import { RoughDefs } from "./ui/RoughDefs";
 import styles from "./RunExperience.module.css";
 
-const Canvas = dynamic(() => import("./Canvas"), { ssr: false });
+const Canvas = dynamic(() => import("./Canvas"), {
+  ssr: false,
+  loading: () => (
+    <div className={styles.canvasLoading} role="status">
+      <p>Loading your canvas…</p>
+    </div>
+  ),
+});
 
 const terminal = new Set(["completed", "partial", "failed"]);
 const labels: Record<Run["status"], string> = {

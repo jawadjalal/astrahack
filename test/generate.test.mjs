@@ -82,3 +82,20 @@ test('incomplete Responses image calls never become complete creatives or trigge
   assert.ok(urls.every(url => url.endsWith('/responses')));
   assert.deepEqual(await readdir(runDir), ['manifest.json']);
 });
+
+test('resume retries only failed creatives and preserves success bytes and prior attempts', async t => {
+  let initialCalls = 0;
+  const reply = () => Response.json({ status: 'completed', usage: { output_tokens: 5 }, output: [{ type: 'image_generation_call', status: 'completed', result: fixture() }] });
+  const first = await generateCreatives({ provider: 'openai', prompt, apiKey: 'fixture-key', outputDir: await temp(t), fetchImpl: async () => [3, 4].includes(++initialCalls) ? Response.json({}, { status: 503 }) : reply() });
+  const preserved = await readFile(join(first.runDir, '01-hero.png'));
+  let retryCalls = 0;
+  const resumed = await generateCreatives({ resumeDir: first.runDir, apiKey: 'fixture-key', requestTimeoutMs: 600000, fetchImpl: async () => { retryCalls++; return reply(); } });
+  assert.equal(retryCalls, 2);
+  assert.equal(resumed.manifest.status, 'complete');
+  assert.deepEqual(await readFile(join(first.runDir, '01-hero.png')), preserved);
+  assert.equal(resumed.manifest.creatives[0].attempts.length, 1);
+  assert.equal(resumed.manifest.creatives[2].attempts.length, 2);
+  assert.match(resumed.manifest.creatives[2].attempts[0].error, /503/);
+  assert.equal(resumed.manifest.creatives[2].attempts[1].usage.output_tokens, 5);
+  await generateCreatives({ resumeDir: first.runDir, apiKey: 'fixture-key', fetchImpl: () => assert.fail('Completed creatives must never be regenerated') });
+});

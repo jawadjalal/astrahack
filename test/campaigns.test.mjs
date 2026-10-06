@@ -96,3 +96,18 @@ test('incomplete OpenAI campaign output is marked failed without saving drafts o
   assert.match(manifest.campaigns[0].error, /did not finish/);
   assert.deepEqual(await readdir(runDir), ['manifest.json']);
 });
+
+test('resume retries only the failed channel and retains its original error', async t => {
+  let initialCalls = 0;
+  const reply = channel => Response.json({ status: 'completed', output: [{ type: 'message', content: [{ type: 'output_text', text: JSON.stringify(fixture(channel)) }] }] });
+  const first = await generateCampaigns({ provider: 'openai', prompt: 'Product', apiKey: 'fixture-key', outputDir: await temp(t), fetchImpl: async () => ++initialCalls === 1 ? Response.json({}, { status: 503 }) : reply('reddit') });
+  const preserved = await readFile(join(first.runDir, 'reddit-campaign.md'), 'utf8');
+  let retryCalls = 0;
+  const resumed = await generateCampaigns({ resumeDir: first.runDir, apiKey: 'fixture-key', fetchImpl: async () => { retryCalls++; return reply('x'); } });
+  assert.equal(retryCalls, 1);
+  assert.equal(resumed.manifest.status, 'complete');
+  assert.equal(await readFile(join(first.runDir, 'reddit-campaign.md'), 'utf8'), preserved);
+  assert.match(resumed.manifest.campaigns[0].attempts[0].error, /503/);
+  assert.equal(resumed.manifest.campaigns[0].attempts[1].status, 'complete');
+  assert.equal(resumed.manifest.campaigns[1].attempts.length, 1);
+});

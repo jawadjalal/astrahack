@@ -3,15 +3,16 @@ import assert from 'node:assert/strict';
 import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { generateLeads, loadInput, mockPlan, validatePlan, assemble, renderLeads } from '../leads/index.mjs';
 import { DRAFTING_KEYS, ICP_KEYS, MORE_KEYS, RESEARCH_KEYS, PLAN_SCHEMA } from '../leads/schema.js';
 import { describeUrl, discoverLeads, pickQueries, readGrounding, resolveRedirect } from '../leads/discover.mjs';
 
-const FIXTURE = new URL('../ugc/fixtures/ignura/report.json', import.meta.url).pathname;
+const FIXTURE = fileURLToPath(new URL('../ugc/fixtures/ignura/report.json', import.meta.url));
 const NOW = new Date('2026-10-06T12:00:00Z');
 const noNetwork = async () => { throw new Error('network must not be used'); };
 async function temp(t) { const dir = await mkdtemp(join(tmpdir(), 'leads-test-')); t.after(() => rm(dir, { recursive: true, force: true })); return dir; }
-const mockRun = async (t, extra = {}) => generateLeads({ input: FIXTURE, mock: true, outputDir: await temp(t), now: NOW, fetchImpl: noNetwork, ...extra });
+const mockRun = async (t, extra = {}) => generateLeads({ provider: 'gemini', input: FIXTURE, mock: true, outputDir: await temp(t), now: NOW, fetchImpl: noNetwork, ...extra });
 
 test('input: a run report becomes observed features with evidence; nothing is invented', async () => {
   const u = await loadInput({ input: FIXTURE });
@@ -101,21 +102,21 @@ test('validatePlan rejects bad structure, bad subreddit names, missing placehold
 
 test('dry-run needs no key and no network, and writes prompts only', async (t) => {
   const dir = await temp(t);
-  const r = await generateLeads({ input: FIXTURE, dryRun: true, apiKey: '', outputDir: dir, fetchImpl: noNetwork, now: NOW, search: true });
+  const r = await generateLeads({ provider: 'gemini', input: FIXTURE, dryRun: true, apiKey: '', outputDir: dir, fetchImpl: noNetwork, now: NOW, search: true });
   assert.deepEqual(await readdir(dir), ['prompts.json']);
   assert.equal(r.doc, null);
   const prompts = JSON.parse(await readFile(join(dir, 'prompts.json'), 'utf8'));
   assert.match(prompts.plan.prompts.research, /Ignura/);
   assert.match(prompts.plan.prompts.research, /Never output URLs/);
   assert.ok(prompts.plan.prompts.more && prompts.plan.prompts.drafting);
-  await assert.rejects(generateLeads({ input: FIXTURE, mock: true, dryRun: true, outputDir: dir }), /not both/);
+  await assert.rejects(generateLeads({ provider: 'gemini', input: FIXTURE, mock: true, dryRun: true, outputDir: dir }), /not both/);
 });
 
 test('mode guards: model mode and --search require a key; nothing is written first', async (t) => {
   const dir = await temp(t);
-  await assert.rejects(generateLeads({ input: FIXTURE, apiKey: '', outputDir: dir }), /GEMINI_API_KEY/);
-  await assert.rejects(generateLeads({ input: FIXTURE, mock: true, search: true, apiKey: '', outputDir: dir }), /--search needs GEMINI_API_KEY/);
-  await assert.rejects(generateLeads({ input: FIXTURE, mock: true, search: true, apiKey: 'k', maxQueries: 99, outputDir: dir }), /between 1 and 20/);
+  await assert.rejects(generateLeads({ provider: 'gemini', input: FIXTURE, apiKey: '', outputDir: dir }), /GEMINI_API_KEY/);
+  await assert.rejects(generateLeads({ provider: 'gemini', input: FIXTURE, mock: true, search: true, apiKey: '', outputDir: dir }), /--search needs GEMINI_API_KEY/);
+  await assert.rejects(generateLeads({ provider: 'gemini', input: FIXTURE, mock: true, search: true, apiKey: 'k', maxQueries: 99, outputDir: dir }), /between 1 and 20/);
   assert.deepEqual(await readdir(dir), []);
 });
 
@@ -130,7 +131,7 @@ test('model mode: three authenticated structured requests, schema in the body, k
   const u = await loadInput({ input: FIXTURE });
   const parts = planParts(mockPlan(u));
   const calls = [];
-  const { doc, dir } = await generateLeads({ input: FIXTURE, apiKey: 'test-secret', model: 'gemini-test', outputDir: await temp(t), now: NOW, fetchImpl: async (url, init) => {
+  const { doc, dir } = await generateLeads({ provider: 'gemini', input: FIXTURE, apiKey: 'test-secret', model: 'gemini-test', outputDir: await temp(t), now: NOW, fetchImpl: async (url, init) => {
     calls.push({ url, init, body: JSON.parse(init.body) });
     return ok([parts.research, parts.more, parts.drafting][calls.length - 1]);
   } });
@@ -150,19 +151,65 @@ test('model mode: one repair pass on invalid output, then a clear failure', asyn
   const parts = planParts(mockPlan(u));
   const bad = structuredClone(parts.research); bad.reddit[0].subreddit = 'r/startups';
   const prompts = [];
-  const { doc } = await generateLeads({ input: FIXTURE, apiKey: 'k', outputDir: await temp(t), now: NOW, fetchImpl: async (_u, init) => {
+  const { doc } = await generateLeads({ provider: 'gemini', input: FIXTURE, apiKey: 'k', outputDir: await temp(t), now: NOW, fetchImpl: async (_u, init) => {
     prompts.push(JSON.parse(init.body).contents[0].parts[0].text);
     return ok([bad, parts.research, parts.more, parts.drafting][prompts.length - 1]);
   } });
   assert.equal(prompts.length, 4);
   assert.match(prompts[1], /previous answer had these problems/);
   assert.match(prompts[1], /bare name/); assert.equal(doc.sources.find((s) => s.type === 'reddit').name !== 'r/r/startups', true);
-  await assert.rejects(generateLeads({ input: FIXTURE, apiKey: 'k', outputDir: await temp(t), fetchImpl: async () => ok(bad) }), /invalid plan-icp response/);
+  await assert.rejects(generateLeads({ provider: 'gemini', input: FIXTURE, apiKey: 'k', outputDir: await temp(t), fetchImpl: async () => ok(bad) }), /invalid plan-icp response/);
 });
 
 test('model mode: HTTP 429 and truncation surface without leaking bodies', async (t) => {
-  await assert.rejects(generateLeads({ input: FIXTURE, apiKey: 'k', outputDir: await temp(t), fetchImpl: async () => new Response('secret body', { status: 429 }) }), (e) => /HTTP 429/.test(e.message) && !/secret body/.test(e.message));
-  await assert.rejects(generateLeads({ input: FIXTURE, apiKey: 'k', outputDir: await temp(t), fetchImpl: async () => Response.json({ candidates: [{ finishReason: 'MAX_TOKENS', content: { parts: [{ text: '{' }] } }] }) }), /did not finish/);
+  await assert.rejects(generateLeads({ provider: 'gemini', input: FIXTURE, apiKey: 'k', outputDir: await temp(t), fetchImpl: async () => new Response('secret body', { status: 429 }) }), (e) => /HTTP 429/.test(e.message) && !/secret body/.test(e.message));
+  await assert.rejects(generateLeads({ provider: 'gemini', input: FIXTURE, apiKey: 'k', outputDir: await temp(t), fetchImpl: async () => Response.json({ candidates: [{ finishReason: 'MAX_TOKENS', content: { parts: [{ text: '{' }] } }] }) }), /did not finish/);
+});
+
+test('OpenAI Luna plans through three strict Responses calls without claiming live leads', async t => {
+  const parts = planParts(mockPlan(await loadInput({ input: FIXTURE })));
+  const replies = [parts.research, parts.more, parts.drafting];
+  const calls = [];
+  const { doc, dir } = await generateLeads({ provider: 'openai', input: FIXTURE, apiKey: 'openai-fixture-secret', outputDir: await temp(t),
+    fetchImpl: async (url, init) => {
+      calls.push({ url, init, body: JSON.parse(init.body) });
+      return Response.json({ status: 'completed', output: [{ type: 'message', content: [{ type: 'output_text', text: JSON.stringify(replies[calls.length - 1]) }] }] });
+    } });
+  assert.equal(calls.length, 3);
+  assert.equal(doc.model, 'gpt-6-luna');
+  assert.equal(doc.provider, 'openai');
+  assert.equal(doc.mode, 'model');
+  assert.ok(calls.every(call => call.url === 'https://api.openai.com/v1/responses' && call.body.model === 'gpt-6-luna'));
+  assert.ok(calls.every(call => call.body.text.format.strict && call.body.reasoning.effort === 'low' && call.body.store === false));
+  assert.deepEqual(Object.keys(calls[0].body.text.format.schema.properties), ICP_KEYS);
+  assert.deepEqual(Object.keys(calls[1].body.text.format.schema.properties), MORE_KEYS);
+  assert.match(calls[2].body.input, /ICP already decided/);
+  assert.equal(doc.discovery.enabled, false);
+  assert.deepEqual(doc.shortlist.leads, []);
+  assert.ok(doc.sources.every(source => source.status === 'recipe' && !source.verified));
+  assert.match((await readFile(join(dir, 'leads.md'), 'utf8')), /No live search was run.*proposed/);
+  assert.ok(!(await readFile(join(dir, 'leads.json'), 'utf8')).includes('openai-fixture-secret'));
+});
+
+test('OpenAI lead planning refuses unsupported live search before calls or output', async t => {
+  const outputDir = await temp(t);
+  await assert.rejects(generateLeads({ provider: 'openai', input: FIXTURE, apiKey: 'fixture-key', search: true, outputDir, fetchImpl: noNetwork }), /requires the gemini provider/);
+  assert.deepEqual(await readdir(outputDir), []);
+});
+
+test('OpenAI lead planning reports provider failure or incomplete output without leaking content', async t => {
+  const cases = [
+    { response: () => Response.json({ error: { message: 'private input and fixture-key' } }, { status: 403 }), expected: /HTTP 403/ },
+    { response: () => Response.json({ status: 'incomplete', output: [] }), expected: /did not finish/ },
+  ];
+  for (const fixture of cases) {
+    let calls = 0;
+    const outputDir = await temp(t);
+    await assert.rejects(generateLeads({ provider: 'openai', input: FIXTURE, apiKey: 'fixture-key', outputDir,
+      fetchImpl: async () => { calls++; return fixture.response(); } }), error => fixture.expected.test(error.message) && !/private input|fixture-key/.test(error.message));
+    assert.equal(calls, 1);
+    assert.deepEqual(await readdir(outputDir), []);
+  }
 });
 
 // ---- live discovery with a fake grounded provider -----------------------------------------------------------
@@ -221,7 +268,7 @@ test('discovery: leads come only from grounding chunks; urls are cleaned, dedupe
 test('discovery: quota error stops early, records it, and produces no fabricated leads; files still written', async (t) => {
   const dir = await temp(t);
   let calls = 0;
-  const { doc } = await generateLeads({ input: FIXTURE, mock: true, search: true, apiKey: 'k', outputDir: dir, now: NOW, maxQueries: 5, delayMs: 0, fetchImpl: async () => { calls++; return new Response('quota', { status: 429 }); } });
+  const { doc } = await generateLeads({ provider: 'gemini', input: FIXTURE, mock: true, search: true, apiKey: 'k', outputDir: dir, now: NOW, maxQueries: 5, delayMs: 0, fetchImpl: async () => { calls++; return new Response('quota', { status: 429 }); } });
   assert.equal(calls, 1, 'stops at the first 429');
   assert.equal(doc.shortlist.leads.length, 0);
   assert.equal(doc.discovery.stoppedEarly, true);

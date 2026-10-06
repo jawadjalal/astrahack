@@ -28,6 +28,7 @@ test('real generator routes run concurrently, preserve partial output, and never
     assert.equal(options.provider, 'openai');
     assert.equal(options.mock, undefined);
     assert.equal(options.dryRun, undefined);
+    if (name !== 'ugc') assert.equal(options.timeoutMs, 600000);
     started.push(name);
     if (started.length === 3) release();
     await barrier;
@@ -47,6 +48,54 @@ test('real generator routes run concurrently, preserve partial output, and never
     assert.equal(result.campaigns.runDir, 'real-campaigns');
     assert.ok((await readFile(join(output, 'ugc-plan.json'), 'utf8')).includes('S1'));
     assert.ok(!(await readFile(join(output, 'launch-kit.json'), 'utf8')).includes('secret-provider-body'));
+  } finally { await rm(output, { recursive: true, force: true }); }
+});
+
+test('incomplete generators with surviving ads and Reddit remain partial when UGC fails', async () => {
+  const output = await mkdtemp(join(tmpdir(), 'web-kit-surviving-'));
+  try {
+    await writeFile(join(output, 'crawl.json'), JSON.stringify(crawl));
+    const result = await generateWebKit(output, { url: 'https://example.com/', runId: 'partial', env: {},
+      ads: async () => ({ runDir: 'real-ads', manifest: { status: 'partial', creatives: [{ status: 'complete' }, { status: 'failed' }] } }),
+      campaigns: async () => ({ runDir: 'real-campaigns', manifest: { status: 'partial', campaigns: [{ channel: 'x', status: 'failed' }, { channel: 'reddit', status: 'complete' }] } }),
+      ugc: async () => { throw new Error('failed'); }
+    });
+    assert.equal(result.failures.length, 3);
+    assert.equal(result.status, 'partial');
+    assert.equal(JSON.parse(await readFile(join(output, 'launch-kit.json'), 'utf8')).status, 'partial');
+  } finally { await rm(output, { recursive: true, force: true }); }
+});
+
+test('older canvas schemas skip unsupported decorations while required and other failures still throw', async () => {
+  const output = await mkdtemp(join(tmpdir(), 'web-kit-old-canvas-'));
+  const kit = { ads: { manifest: { creatives: [{ index: 1, name: 'hero', filename: 'hero.png', status: 'failed' }] } } };
+  try {
+    for (const scenario of [
+      { status: 400, message: 'invalid op(s)', optional: true, succeeds: true },
+      { status: 503, message: 'unavailable', optional: true, succeeds: false },
+      { status: 400, message: 'invalid JSON body', optional: true, succeeds: false },
+      { status: 400, message: 'invalid op(s)', optional: false, succeeds: false }
+    ]) {
+      const posted = [];
+      const task = publishWebKit(kit, { output, canvasUrl: 'https://canvas.example', runId: 'old-server',
+        fetchImpl: async (url, init) => {
+          if (url.endsWith('/state')) return Response.json({ ops: [] });
+          const body = JSON.parse(init.body);
+          const optional = !Array.isArray(body) && ['say', 'group'].includes(body.type);
+          if (optional === scenario.optional) return Response.json({ error: scenario.message }, { status: scenario.status });
+          posted.push(...(Array.isArray(body) ? body : [body]));
+          return Response.json({ ok: true });
+        }
+      });
+      if (!scenario.succeeds) await assert.rejects(task, /Canvas request failed/);
+      else {
+        const result = await task;
+        assert.ok(result.optionalSkipped > 0);
+        assert.equal(result.warnings.length, result.optionalSkipped);
+        assert.equal(result.postedCount, posted.length);
+        assert.ok(result.postedCount > 0);
+      }
+    }
   } finally { await rm(output, { recursive: true, force: true }); }
 });
 

@@ -1,11 +1,11 @@
-export async function createResponse(payload, { apiKey = process.env.OPENAI_API_KEY, endpoint = 'https://api.openai.com/v1/responses', fetchImpl = fetch, signal } = {}) {
+export async function createResponse(payload, { apiKey = process.env.OPENAI_API_KEY, endpoint = 'https://api.openai.com/v1/responses', fetchImpl = fetch, signal, timeoutMs = 120000 } = {}) {
   if (!apiKey) throw new Error('OPENAI_API_KEY is required for model API calls');
   let response;
   try { response = await fetchImpl(endpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
     body: JSON.stringify(payload),
-    signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(120000)]) : AbortSignal.timeout(120000)
+    signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs)
   }); } catch (error) {
     throw new Error(String(error.message || error).replaceAll(apiKey, '[redacted]'));
   }

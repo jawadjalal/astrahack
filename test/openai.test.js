@@ -4,6 +4,15 @@ import { createResponse } from '../src/openai.js';
 
 const apiKey = 'fixture-api-key-never-log';
 
+test('generation callers can extend the timeout without changing the QA default', async t => {
+  const durations = [];
+  t.mock.method(AbortSignal, 'timeout', milliseconds => { durations.push(milliseconds); return new AbortController().signal; });
+  const fetchImpl = async () => Response.json({ status: 'completed', output: [] });
+  await createResponse({}, { apiKey, fetchImpl });
+  await createResponse({}, { apiKey, fetchImpl, timeoutMs: 600000 });
+  assert.deepEqual(durations, [120000, 600000]);
+});
+
 test('Responses client serializes the payload and passes an abortable signal to fetch', async () => {
   const controller = new AbortController();
   const payload = { model: 'fixture-model', max_output_tokens: 256, input: 'fixture prompt' };

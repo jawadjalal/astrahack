@@ -50,6 +50,8 @@ From the repository root:
 node bin/web-worker.js
 ```
 
+To start the daemon before the matching worker token has been added, run `node bin/web-worker.js --wait-for-token`. It reloads the ignored local `.env` every second until the token has at least 24 non-whitespace characters, then performs normal preflight and queue polling. Values inherited from the launching process take precedence over `.env`; token values are never logged. Ctrl+C exits the wait cleanly. A configured token rejected by the server stops the worker with a sanitized authentication error.
+
 The worker checks required credentials and executable access before polling. It processes one queued website at a time. Its internal fleet derives concurrency from observed work, starting with three scouts and allowing up to 16 isolated Chrome instances. `--once` processes at most one queued run and exits; it also exits if the queue is empty.
 
 For local development, start `canvas/` and set `CANVAS_URL=http://localhost:3000` with the same worker token in both processes. Production uses Blob persistence. Local development defaults to memory, so restarting the canvas server loses locally queued runs.

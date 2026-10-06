@@ -17,8 +17,8 @@ const readOptional = async file => {
   try { return JSON.parse(await readFile(file, 'utf8')); }
   catch (error) { if (error.code === 'ENOENT') return null; throw error; }
 };
-const bounded = (signal, fetchImpl = fetch) => (url, init = {}) => fetchImpl(url, {
-  ...init, signal: AbortSignal.any([AbortSignal.timeout(300000), ...[signal, init.signal].filter(Boolean)])
+const bounded = (signal, fetchImpl = fetch, timeoutMs = 300000) => (url, init = {}) => fetchImpl(url, {
+  ...init, signal: AbortSignal.any([AbortSignal.timeout(timeoutMs), ...[signal, init.signal].filter(Boolean)])
 });
 
 /** Preserve actual actions and screenshot paths while adapting the fleet to the existing UGC contract. */
@@ -62,7 +62,7 @@ export async function generateWebKit(output, { url, runId, signal, onProgress = 
   const directory = join(output, 'launch-kit');
   await mkdir(directory, { recursive: true });
   const result = { status: 'complete', ads: null, campaigns: null, ugc: null, failures: [] };
-  const safeFetch = bounded(signal, fetchImpl);
+  const safeFetch = bounded(signal, fetchImpl, 600000);
   const run = async (name, work) => {
     if (signal?.aborted) { result.failures.push(name); return; }
     await onProgress({ stage: `generating_${name}`, message: `Generating ${name === 'ads' ? 'five ad images' : name === 'campaigns' ? 'X and Reddit campaign drafts' : 'UGC hooks and scripts'} from observed evidence.` });
@@ -74,21 +74,24 @@ export async function generateWebKit(output, { url, runId, signal, onProgress = 
   await Promise.all([
     run('ads', () => ads({ prompt: brief, outputDir: directory, provider: env.IMAGE_PROVIDER || 'openai',
       openaiApi: 'responses', responseModel: env.OPENAI_IMAGE_RESPONSE_MODEL || 'gpt-6-luna',
-      quality: env.OPENAI_IMAGE_QUALITY || 'low', fetchImpl: safeFetch })),
+      quality: env.OPENAI_IMAGE_QUALITY || 'low', fetchImpl: safeFetch, signal, timeoutMs: 600000 })),
     run('campaigns', () => campaigns({ prompt: brief, outputDir: directory, provider: env.CAMPAIGN_PROVIDER || 'openai',
       model: env.CAMPAIGN_PROVIDER === 'gemini' ? env.GEMINI_TEXT_MODEL : env.OPENAI_TEXT_MODEL || 'gpt-6-luna',
-      channels: ['x', 'reddit'], fetchImpl: safeFetch })),
+      channels: ['x', 'reddit'], fetchImpl: safeFetch, signal, timeoutMs: 600000 })),
     run('ugc', async () => {
       const document = await ugc({ report, brief, provider: env.UGC_PROVIDER || 'openai',
         model: env.UGC_PROVIDER === 'gemini' ? env.GEMINI_TEXT_MODEL : env.OPENAI_TEXT_MODEL || 'gpt-6-luna',
         reportPath, runDir: output, fetchImpl: safeFetch,
-        request: (payload, options = {}) => createResponse(payload, { ...options, signal }) });
+        request: (payload, options = {}) => createResponse(payload, { ...options, signal, timeoutMs: 600000 }) });
       const path = join(output, 'ugc-plan.json');
       await Promise.all([json(path, document), writeFile(join(output, 'ugc-plan.md'), render(document))]);
       return { path, document };
     })
   ]);
-  result.status = result.failures.length ? result.failures.length === 3 ? 'failed' : 'partial' : 'complete';
+  const usable = Boolean(result.ugc?.document?.scripts?.length) ||
+    result.ads?.manifest?.creatives?.some(item => item.status === 'complete') ||
+    result.campaigns?.manifest?.campaigns?.some(item => item.status === 'complete');
+  result.status = !result.failures.length ? 'complete' : usable ? 'partial' : 'failed';
   await json(join(output, 'launch-kit.json'), { status: result.status, failures: result.failures,
     ads: result.ads?.runDir || null, campaigns: result.campaigns?.runDir || null, ugc: result.ugc?.path || null });
   return result;
@@ -114,8 +117,15 @@ export async function publishWebKit(kit, { output, canvasUrl, runId, board, sign
   const base = canvasUrl.replace(/\/+$/, '');
   const call = async (path, init) => {
     const response = await request(boardApi(base, board)(path), init);
-    if (!response.ok) throw new Error(`Canvas request failed (HTTP ${response.status}).`);
-    return response.json();
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const error = new Error(`Canvas request failed (HTTP ${response.status}).`);
+      error.status = response.status;
+      // Locally validated optional ops can be rejected by an older deployed schema.
+      error.unsupportedOp = response.status === 400 && (body.error === 'invalid op(s)' || /unsupported|unknown.*(?:op|type)/i.test(String(body.error || '')));
+      throw error;
+    }
+    return body;
   };
   const state = await call('/state');
   const { box, ids } = layout.stateBounds(state.ops || []);
@@ -160,8 +170,16 @@ export async function publishWebKit(kit, { output, canvasUrl, runId, board, sign
   for (let offset = 0; offset < required.length; offset += 40) await call('/ops', {
     method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(required.slice(offset, offset + 40))
   });
-  for (const op of ops.filter(op => ['say', 'group'].includes(op.type))) await call('/ops', {
-    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(op)
-  });
-  return { counts: rendered.counts, postedCount: ops.length };
+  let postedCount = required.length;
+  const warnings = [];
+  for (const op of ops.filter(op => ['say', 'group'].includes(op.type))) {
+    try {
+      await call('/ops', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(op) });
+      postedCount++;
+    } catch (error) {
+      if (!error.unsupportedOp) throw error;
+      warnings.push(`Canvas does not support the optional ${op.type} decoration; required artifacts were published.`);
+    }
+  }
+  return { counts: rendered.counts, postedCount, optionalSkipped: warnings.length, warnings };
 }
