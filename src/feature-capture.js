@@ -5,6 +5,14 @@ const DEFAULT_MODEL = 'gpt-6-luna';
 const GROUP_SIZE = 60;
 const short = (value, length = 500) => String(value || '').replace(/\s+/g, ' ').trim().slice(0, length);
 const slug = value => short(value, 50).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'feature';
+const routeKey = value => {
+  try {
+    const url = new URL(value);
+    url.hash = '';
+    url.pathname = url.pathname.replace(/\/+$/, '') || '/';
+    return url.href;
+  } catch { return String(value || ''); }
+};
 
 function localScreenshot(runDir, path) {
   if (typeof path !== 'string' || !path.toLowerCase().endsWith('.png')) return null;
@@ -120,7 +128,13 @@ export async function captureMajorFeatures(reportPath, options = {}) {
   const apiKey = options.apiKey || process.env.OPENAI_API_KEY;
   if (candidates.length && !apiKey) throw new Error(`OPENAI_API_KEY is required for ${model} feature selection`);
   const outputDir = resolve(options.output || join(runDir, 'feature-captures'));
-  const unassignedUrls = [...new Set([...(report.unassigned || report.unvisited || []), ...(crawlReport.unvisited || [])])];
+  const completedJourneyWorkers = new Set((report.jobs || []).filter(job => job.status === 'completed' && job.mission === 'journey').map(job => job.id));
+  const coveredRoutes = new Set((report.jobs || []).filter(job => completedJourneyWorkers.has(job.id)).map(job => routeKey(job.url)));
+  for (const item of report.observations || []) {
+    if (completedJourneyWorkers.has(item.worker) && item.observation?.url) coveredRoutes.add(routeKey(item.observation.url));
+  }
+  const unassignedUrls = [...new Map([...(report.unassigned || report.unvisited || []), ...(crawlReport.unvisited || [])]
+    .filter(url => !coveredRoutes.has(routeKey(url))).map(url => [routeKey(url), url])).values()];
   const failedPages = (crawlReport.pages || []).filter(page => page.status === 'error');
   const manifest = {
     schemaVersion: 1,
@@ -134,7 +148,7 @@ export async function captureMajorFeatures(reportPath, options = {}) {
       reportedFeatures: report.reportedFeatures.length,
       screenshotsListed: listed.length,
       screenshotsAvailable: candidates.length,
-      unassignedPages: Math.max(unassignedUrls.length, report.coverage?.unassignedPages || 0),
+      unassignedPages: Array.isArray(report.unassigned) ? unassignedUrls.length : Math.max(unassignedUrls.length, report.coverage?.unassignedPages || 0),
       failedPages: failedPages.length,
       incompleteWorkers: (report.jobs || report.workers || []).filter(worker => worker.status && worker.status !== 'completed').length
     },

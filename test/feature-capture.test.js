@@ -109,6 +109,26 @@ test('model precedence is CLI option, environment, then Luna', async () => {
   }
 });
 
+test('completed fleet journey removes stale crawl unvisited route from gaps', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'astrahack-route-coverage-'));
+  try {
+    await writeFile(join(dir, 'crawl.json'), JSON.stringify({ unvisited: [
+      'https://fixture.test/work/', 'https://fixture.test/pricing'
+    ] }));
+    const reportPath = join(dir, 'fleet.json');
+    await writeFile(reportPath, JSON.stringify({
+      status: 'completed', observations: [], unassigned: ['https://fixture.test/pricing'],
+      jobs: [{ id: 'A001', mission: 'journey', status: 'completed', url: 'https://fixture.test/work' }]
+    }));
+    const { manifest } = await captureMajorFeatures(reportPath);
+    assert.equal(manifest.coverage.unassignedPages, 1);
+    assert.ok(manifest.gaps.some(gap => gap.feature === 'https://fixture.test/pricing'));
+    assert.equal(manifest.gaps.some(gap => gap.feature.includes('/work')), false);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('candidate contract accepts crawler observations and rejects paths outside the run', () => {
   const candidates = screenshotCandidates({ observations: [
     { screenshot: 'screenshots/a.png', observation: { title: 'A' } },
