@@ -18,6 +18,17 @@ npm run smoke:prod                     # smoke test of the deployed canvas at ht
 
 The board is at http://localhost:3000/?view=canvas. Full walkthrough, who owns what, troubleshooting and what to do if your machine dies: [docs/RUNBOOK.md](docs/RUNBOOK.md). The 60-second demo script: [docs/DEMO.md](docs/DEMO.md).
 
+### UGC extras: a judge that improves the plan, and animatics
+
+After a teardown has put a UGC plan on the board, two more commands build on it (both run without a key; with `OPENAI_API_KEY` they use `gpt-6-astra` and text-to-speech):
+
+```sh
+node bin/judge.js ugc/fixtures/ignura --canvas http://localhost:3000            # scores every hook and script, rewrites the weak ones, puts a before/after scorecard on the board
+node bin/video.js animatic ugc/fixtures/ignura --script all --canvas http://localhost:3000   # renders each UGC script as a 9:16 storyboard video from the run's real screenshots
+```
+
+Sample output: [docs/img/animatic-ignura-S1.mp4](docs/img/animatic-ignura-S1.mp4). Details: [docs/JUDGE.md](docs/JUDGE.md), [docs/VIDEO.md](docs/VIDEO.md).
+
 ## Initial MVP
 
 Given access to a website or app and a short brief, the agents should be able to:
