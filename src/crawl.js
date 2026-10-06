@@ -16,9 +16,9 @@ export function normalizeLink(raw, base, origin) {
   } catch { return null; }
 }
 
-export async function crawlSite({ url, output, chrome, maxPages = 20, maxDepth = 3, headless = true, onPage }) {
+export async function crawlSite({ url, output, chrome, maxPages = 50, maxDepth = 4, headless = true, onPage }) {
   if (!url || !chrome) throw new Error('crawlSite requires url and chrome');
-  if (!Number.isInteger(maxPages) || maxPages < 1 || maxPages > 100) throw new Error('maxPages must be 1–100');
+  if (!Number.isInteger(maxPages) || maxPages < 1 || maxPages > 500) throw new Error('maxPages must be 1–500');
   if (!Number.isInteger(maxDepth) || maxDepth < 0 || maxDepth > 10) throw new Error('maxDepth must be 0–10');
   const root = new URL(url);
   if (!['http:', 'https:', 'file:'].includes(root.protocol)) throw new Error('Only HTTP, HTTPS, and local fixtures are supported');

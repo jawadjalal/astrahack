@@ -97,7 +97,7 @@ Exit status is `0` for a passing run, `1` for QA findings, and `2` for setup or 
 
 ### QA crawl and Astra agent
 
-The QA fleet has two more stages. A bounded crawler follows same-origin HTML links and saves a page inventory, screenshots, basic navigation findings, and an `observations[]` handoff for feature capture. A GPT-6 Astra computer-use agent then exercises read-only flows in an isolated Chrome profile and records each UI action with an observation and screenshot.
+The QA pipeline has three stages. A bounded crawler follows same-origin HTML links and saves a page inventory. Independent GPT-6 Astra computer-use agents then exercise read-only flows in separate Chrome sessions, with up to `concurrency` agents active at once. Every crawled page receives a journey agent first. The fleet then assigns agents to new routes found through computer use, followed by separate feature-mapping and control-testing missions until `maxAgents` is reached. Their screenshots and observations are combined for QA analysis and feature selection.
 
 Copy and edit [`examples/qa.json`](examples/qa.json), then run:
 
@@ -106,12 +106,19 @@ ASTRAHACK_CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" 
   npm run qa -- crawl examples/qa.json --output runs/site-crawl
 
 OPENAI_API_KEY=... ASTRAHACK_CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
-  npm run qa -- agent examples/qa.json --output runs/site-agent
+  npm run qa -- fleet examples/qa.json --output runs/site-fleet
 ```
 
-The crawler writes `crawl.json`; the agent writes `qa-agent.json`. Both are accepted by the feature capture tool. The agent uses the OpenAI Responses API with model `gpt-6-astra` and the `computer` tool. It sends current viewport screenshots to the API, then executes bounded mouse and keyboard actions in Chrome. `maxTurns` and `maxActions` limit the run. It blocks external links and several consequential button labels, and resets navigation if the page leaves the starting origin. Treat these as MVP safeguards: run against a test account and review any site that can make consequential changes through innocuous controls. Agent assessments are kept separate from observed action records; issue references without a matching evidence step are marked unverified.
+The fleet command runs the crawl automatically. It writes `crawl.json`, `fleet.json`, a combined `qa-agent.json`, and one `workers/A###/qa-agent.json` per worker. `fleet.json` lists each page assignment, status, coverage gaps, and screenshot observations. The combined `qa-agent.json` retains worker IDs and global action numbers so the QA analyst can cite exact evidence. To review the result:
 
-The crawler is read-only and does not bypass login, expand every interaction, or infer all product features from links alone. The model agent can interact with visible controls but cannot handle native dialogs. The `OPENAI_API_KEY` variable is needed only for the model-driven stage. The local tests use a mocked API response and do not incur API charges.
+```sh
+OPENAI_API_KEY=... node bin/analyze-qa.js runs/site-fleet
+OPENAI_API_KEY=... node bin/feature-capture.js runs/site-fleet/fleet.json
+```
+
+For a single targeted computer-use session, use `npm run qa -- agent examples/qa.json --output runs/site-agent`. The agents use the OpenAI Responses API with model `gpt-6-astra` and its `computer` tool. Each sends viewport screenshots to the API, then executes bounded mouse and keyboard actions in Chrome. `maxTurns` and `maxActions` apply **per agent**; `maxAgents` and `concurrency` bound the fleet. The adapter blocks external links and several consequential button labels, and resets navigation if a page leaves the starting origin. Run against a test account and review any site that can make consequential changes through innocuous controls. Agent assessments stay separate from observed action records; issue references without a matching evidence step are marked unverified.
+
+The default fleet can schedule up to 60 independent agents across up to 50 crawled pages, running eight browsers at a time; raise the limits in the config for larger sites. The crawler does not bypass login or infer all features from links alone. Workers start from assigned pages, but their exploration is model-guided and may leave some controls untested; coverage is reported rather than assumed. The browser adapter cannot handle native dialogs. The `OPENAI_API_KEY` variable is needed for the model-driven stages. Local tests use mocked API responses and do not incur API charges.
 
 ### Capture major feature screenshots
 

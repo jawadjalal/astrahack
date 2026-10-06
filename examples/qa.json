@@ -1,9 +1,11 @@
 {
   "url": "https://example.com",
   "brief": "Describe the product and exercise its main read-only journeys.",
-  "maxPages": 20,
-  "maxDepth": 3,
-  "maxTurns": 12,
+  "maxPages": 50,
+  "maxDepth": 4,
+  "maxAgents": 60,
+  "concurrency": 8,
+  "maxTurns": 8,
   "maxActions": 40,
   "model": "gpt-6-astra"
 }
