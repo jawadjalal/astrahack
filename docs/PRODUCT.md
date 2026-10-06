@@ -1,39 +1,14 @@
-# Product scope
+# Scope
 
-> Earlier planning snapshot for creative generation. See the root README for the current MVP, which also includes website and app exploration, QA, evidence capture, and UGC planning.
+One prompt in; five generated square ad images out.
 
-## Goal
+- Static images for Facebook/Instagram, no video.
+- Clean, product-specific visuals grounded in the supplied prompt.
+- Five distinct art directions, each exported as a 1024×1024 PNG.
+- OpenAI image generation with a key supplied later.
+- No website, browser interface, app exploration, or prompt-analysis model required.
+- Build quickly for the hackathon.
 
-Turn supplied product materials into polished marketing creatives with accurate messaging, readable typography, and strong visual composition.
+The caller is responsible for turning computer-use findings into the input prompt. Include the product name, observed features, audience, supported benefits, brand colors, preferred copy, and CTA where available. The generator preserves those facts and adds creative direction.
 
-## Confirmed direction
-
-- Focus on the creative generation side.
-- Use supplied screenshots and product information as source material.
-- Generate creatives using OpenAI with a user-provided API key.
-- Prioritize clean, effective results.
-
-## Proposed first version — pending decisions
-
-- Upload screenshots and optional logos or brand references.
-- Enter product description, target audience, key benefit, and call to action.
-- Choose creative destination, dimensions, and variation count.
-- Generate distinct concepts and supporting copy.
-- Review, regenerate individual variations, and download finished images.
-
-Static images are a proposed starting point. Video, billing, ad publishing, and team features are not yet agreed.
-
-## Quality criteria
-
-- Every product claim is supported by supplied materials or explicit user input.
-- No invented features, testimonials, pricing, or performance promises.
-- Each creative has a clear message and legible copy.
-- App screenshots remain faithful when presented as product proof.
-- Brand rules, requested dimensions, and cropping are respected.
-- Variations explore meaningful differences in message or composition.
-
-“Effective” initially means meeting the brief and human review criteria. Conversion performance needs subsequent measurement.
-
-## Proposed demo acceptance
-
-Given supplied product materials and a creative brief, return distinct creative variations in an agreed format, support revision, and provide downloadable images. Output count, runtime, and cost limits remain open.
+Generated copy and visuals still need human review before publication. The script cannot independently verify input claims or guarantee ad performance.

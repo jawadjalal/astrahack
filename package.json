@@ -1,14 +1,19 @@
 {
-  "name": "astrahack-computer-use",
+  "name": "astrahack",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "bin": { "astrahack": "./bin/astrahack.js", "astrahack-qa": "./bin/qa.js" },
+  "engines": { "node": ">=22.9" },
+  "bin": {
+    "astrahack": "./bin/astrahack.js",
+    "astrahack-qa": "./bin/qa.js"
+  },
   "scripts": {
     "run": "node bin/astrahack.js",
     "qa": "node bin/qa.js",
     "capture-features": "node bin/feature-capture.js",
-    "test": "node --test"
-  },
-  "engines": { "node": ">=22" }
+    "generate": "node --env-file-if-exists=.env generate.mjs",
+    "test": "node --test",
+    "check": "node --check generate.mjs && node --check lib/generate.mjs"
+  }
 }

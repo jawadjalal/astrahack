@@ -123,6 +123,20 @@ OPENAI_API_KEY=... node bin/feature-capture.js runs/example/report.json
 
 It writes `feature-captures/manifest.json` and selected PNGs beside the QA report. The manifest links each screenshot to its source observation and lists evidence gaps. The QA report remains the input contract; see [the capture contract](docs/FEATURE_CAPTURE_CONTRACT.md) for the supported crawler shape and limitations. The agent requires an OpenAI API key and sends short page observations to the Responses API.
 
-## Planning notes
+## Generate five square ad creatives
 
-The documents in [`docs/`](docs/) capture earlier planning for the creative-generation part of the product. They predate the broader MVP described here and are retained as background, not as the current scope for the computer-use work.
+The creative slice accepts a supplied prompt and produces five distinct 1024×1024 PNG ad images. No UI or running service is needed. Requires Node.js 22.9 or newer.
+
+```sh
+npm run generate -- --prompt-file brief.txt
+```
+
+Set `OPENAI_API_KEY` in your environment or local `.env` first. Without a key, prepare the five prompts:
+
+```sh
+npm run generate -- --prompt "Your product facts and ad brief" --dry-run
+```
+
+Images and a status manifest go into a unique folder under `artifacts/`. The computer-use runner above is preserved; its findings can inform the supplied prompt. See [creative generator usage](docs/CREATIVES.md) and [code integration](docs/INTEGRATION.md).
+
+The docs in `docs/` describe the creative slice; the computer-use scope and usage remain documented above.
