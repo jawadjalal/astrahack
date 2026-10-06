@@ -1,4 +1,4 @@
-# Demo and pitch (3 minutes)
+# Demo and pitch (60 seconds)
 
 What we show: a computer-use agent uses a client's product like a user, writes down what it saw, and the evidence lands on a shared canvas an agency can walk the client through. For Ignura (ignura.com, "We ignite your startup", the consumer-app launch studio).
 
@@ -45,33 +45,24 @@ node canvas/scripts/push-run.mjs runs/demo --canvas http://localhost:3000 --live
 
 For the model-driven agent see the README (`npm run qa -- agent ...`, needs `OPENAI_API_KEY`). Details of the push script are in [CANVAS_INTEGRATION.md](CANVAS_INTEGRATION.md). Agents that run inside Claude Code or Codex draw through the MCP server instead ([MCP.md](MCP.md)).
 
-## The 3-minute script
+## The 60-second script
 
-Layout of the room: canvas full screen on the projector, one second terminal hidden behind it. Follow is on in the canvas toolbar so the camera tracks new items.
+Layout: canvas full screen on the projector, Follow on, board empty, one hidden terminal. A real agent run takes minutes, so a one-minute slot never shows one end to end. Use a replay: `node canvas/scripts/seed-demo.mjs --live` (about 15 s, sample app) or `node canvas/scripts/push-run.mjs runs/demo --live --delay 250 --clear` (a real recorded run). Say "recorded run" out loud either way. Never call a replay live.
 
 | Time | Beat | Say | Do |
 | --- | --- | --- | --- |
-| 0:00 | Hook | "Every launch agency has the same meeting. You tell the client their onboarding leaks. They say, show me." | Canvas is empty. Do not touch anything. |
-| 0:20 | Problem | "Today that is a Loom, a Figma file full of screenshots and a Notion page. Nobody trusts it, and it is stale by Friday. We wanted the evidence to build itself." | Still empty. |
-| 0:40 | Start | "This is an agent using the client's product the way a customer would. We give it a test account and a goal: get from install to first plant." | Start the run (or `seed-demo.mjs --live` for the backup). Screens begin to appear. |
-| 0:55 | Observe | "It is not reading code. It sees the screen, taps, and records every step. Each box is a real screenshot in order." | Let the camera follow. Point at the Step badges and arrows. |
-| 1:15 | Reproduce | "When something breaks it does not just say so. It tries again. This one is marked Verified because it happened twice. This one says Unverified because it only saw it once, and it tells us that." | When the paywall finding lands, point at the card: severity chip, expected, actual, the Verified chip. Then point at an Unverified card. |
-| 1:35 | Steer | "And I am not locked out of the run." | See "The steering moment" below. About 20 seconds. |
-| 1:55 | Explain | "Each finding says what it expected, what happened, and sits on a box over the exact spot." | Click a red box on the paywall close button. Press play on the run recording for 3 seconds. |
-| 2:10 | Rank | "Then it ranks them. Paywall with no way out is number one. That is the order we would fix them in." | Click Fit all. Read finding #1 aloud. |
-| 2:25 | Present | "Now the client view." | Click Present (bottom left). Toolbars vanish, board is read-only. Pan to the paywall, then back out. |
-| 2:40 | Close | "Ignura launches consumer apps: design, launch film, UGC, launch day. Before we launch yours we run this teardown, hand you this board, and fix the top of the list first. If you want one on your app, find us after this." | Leave Present mode on the full board. |
-| 3:00 | End | | |
+| 0:00 | Hook | "Every launch agency has this meeting. You say the onboarding leaks. The client says: show me." | Empty board. Press Enter in the hidden terminal to start the replay as you finish the sentence. |
+| 0:08 | Observe | "So an agent uses the app like a customer. Every box is a real screenshot, in order." | Camera follows. Point at the arrows and step badges as they draw in. |
+| 0:25 | Reproduce | "When something breaks it tries again. Verified means it happened twice. Unverified means it only saw it once, and says so." | Point at a Verified card, then an Unverified one. |
+| 0:40 | Explain | "Each finding sits on a box over the exact spot." | Click the red box on the paywall close button. |
+| 0:47 | Human in the loop | "And I can add my own evidence." | Drag a screenshot from the desktop onto the board. It uploads and appears. |
+| 0:53 | Present | "That's the client view." | Click Present. |
+| 0:57 | Close | "Ignura: a teardown first, then we fix the top of the list and launch it. Find us after." | Hold on the board. |
+| 1:00 | End | | |
 
-### The steering moment
+Cut for time, mention only in Q&A: the run recording playback, the ranking walkthrough, mid-run steering by an MCP agent, UGC and ads.
 
-Goal: show the human can redirect the agent mid-run and new evidence appears on the same board.
-
-- Option A (needs the agent to be an MCP agent in Claude Code or Codex with `astrahack-canvas` registered): type into the agent session, "Go back to the paywall and try to close it twice, then add the result." New items appear on the canvas. Rehearse this at least three times before using it on stage.
-- Option B (always works): drag a screenshot from the desktop onto the canvas. It uploads and appears as a new image where you drop it. Say, "I can add my own evidence next to the agent's." Then drag a finding card or box next to it to show the board is editable.
-- Backup mode: only Option B. Do not pretend the seeded board is responding.
-
-If you are unsure which to use, use B. It cannot fail in front of the room.
+Rehearse with a timer. If you run long, drop the Reproduce beat to one sentence; do not drop Present.
 
 ## Stage checklist
 
@@ -102,7 +93,7 @@ Canvas:
 - [ ] Browser zoom 100%, full screen, one tab. Canvas toolbar shows "connected".
 - [ ] Try Present mode and Exit present once so you know where the button is.
 
-Backup plan (decide by 0:40, not later):
+Backup plan (decide by 0:08, not later):
 
 1. Live run fails to start, hangs, or the network is bad: stop it, say nothing, run `node canvas/scripts/seed-demo.mjs --live` and continue the same script. The script works the same.
 2. Canvas is down: restart `PORT=3000 npm run dev`, reseed. About 10 seconds.
@@ -110,14 +101,14 @@ Backup plan (decide by 0:40, not later):
 
 ## Two-slide outline
 
-Slide 1, the problem and the product (shown 0:00 to 0:40 if the canvas is not ready, otherwise skip):
+Slide 1, only if the canvas is not ready (otherwise skip):
 
 - Title: "Show me." The meeting every launch agency has.
 - Left: today. A Loom, screenshots in Figma, a Notion page. Stale, unverifiable.
 - Right: with us. A computer-use agent uses the product, records the run, and builds the evidence on a shared canvas. Observe, reproduce, explain, rank.
 - Footer line: verified vs unverified is stated on every finding.
 
-Slide 2, the offer (shown at 2:40 while taking questions):
+Slide 2, the offer (shown during questions):
 
 - Title: "Ignite your launch, starting with a teardown."
 - Three steps: 1. We run the agent on your app with a test account. 2. You get the board: screens, evidence, ranked fixes, read-only client view. 3. We fix the top of the list, then launch it: design, launch film, UGC, launch day.
