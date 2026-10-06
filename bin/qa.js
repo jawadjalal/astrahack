@@ -4,7 +4,10 @@ import { crawlSite } from '../src/crawl.js';
 import { runQaAgent } from '../src/qa-agent.js';
 import { runFleet } from '../src/fleet.js';
 
-const usage = 'Usage: node bin/qa.js <crawl|agent|fleet> <config.json> [--output DIR] [--chrome PATH] [--headed]';
+try { process.loadEnvFile('.env'); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+
+const usage = 'Usage: node bin/qa.js <crawl|agent|fleet> <config.json> [--output DIR] [--chrome PATH] [--model MODEL] [--max-requests N] [--max-agents N] [--concurrency N] [--max-turns N] [--max-duration-ms N] [--headed]';
+const numericFlags = { '--max-requests': 'maxRequests', '--max-agents': 'maxAgents', '--concurrency': 'concurrency', '--max-turns': 'maxTurns', '--max-duration-ms': 'maxDurationMs', '--max-output-tokens': 'maxOutputTokens' };
 
 try {
   const [mode, configFile, ...args] = process.argv.slice(2);
@@ -15,9 +18,12 @@ try {
   while (args.length) {
     const flag = args.shift();
     if (flag === '--headed') options.headless = false;
-    else if (flag === '--output' || flag === '--chrome') {
+    else if (flag === '--output' || flag === '--chrome' || flag === '--model') {
       if (!args.length) throw new Error(`${flag} needs a value`);
       options[flag.slice(2)] = args.shift();
+    } else if (numericFlags[flag]) {
+      if (!args.length) throw new Error(`${flag} needs a value`);
+      options[numericFlags[flag]] = Number(args.shift());
     } else throw new Error(`Unknown option: ${flag}`);
   }
   options.chrome ||= process.env.ASTRAHACK_CHROME;
@@ -33,7 +39,9 @@ try {
     : `${result.fleet.coverage.completedAgents}/${result.fleet.coverage.totalAgents} agents completed; ${result.fleet.coverage.crawledPages} pages crawled`;
   console.log(`${status}: ${result.out}/${mode === 'crawl' ? 'crawl' : mode === 'agent' ? 'qa-agent' : 'fleet'}.json`);
   if (result.report?.error) console.error(result.report.error);
-  process.exitCode = result.report?.status === 'error' || result.fleet?.status === 'error' ? 2 : 0;
+  const runStatus = result.report?.status || result.fleet?.status;
+  if (result.fleet?.usage) console.log(`API usage: ${result.fleet.usage.requests} requests, ${result.fleet.usage.inputTokens} input + ${result.fleet.usage.outputTokens} output tokens`);
+  process.exitCode = runStatus === 'error' ? 2 : ['partial', 'limit_reached', 'needs_attention'].includes(runStatus) ? 1 : 0;
 } catch (error) {
   console.error(error.message);
   process.exitCode = 2;

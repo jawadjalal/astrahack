@@ -3,9 +3,10 @@
   "brief": "Describe the product and exercise its main read-only journeys.",
   "maxPages": 50,
   "maxDepth": 4,
-  "maxAgents": 60,
   "concurrency": 8,
-  "maxTurns": 8,
-  "maxActions": 40,
-  "model": "gpt-6-astra"
+  "maxTurns": 6,
+  "maxActions": 25,
+  "maxRequests": 30,
+  "maxDurationMs": 300000,
+  "maxOutputTokens": 2048
 }
