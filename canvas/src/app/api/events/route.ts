@@ -1,0 +1,82 @@
+import { list, subscribe } from "@/server/store";
+import { CORS_HEADERS, preflight } from "@/server/cors";
+import type { Envelope } from "@/lib/ops";
+
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
+export const OPTIONS = preflight;
+
+export async function GET(req: Request) {
+  const url = new URL(req.url);
+  const since = Number(url.searchParams.get("since") ?? 0) || 0;
+  const enc = new TextEncoder();
+  let cleanup = () => {};
+
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      let closed = false;
+      const send = (chunk: string) => {
+        if (closed) return;
+        try {
+          controller.enqueue(enc.encode(chunk));
+        } catch {
+          cleanup();
+        }
+      };
+      const sendEnv = (e: Envelope) => send(`data: ${JSON.stringify(e)}\n\n`);
+
+      // Subscribe first, buffer live events during replay, then flush deduped by seq.
+      let lastSeq = since;
+      const buffer: Envelope[] = [];
+      let replaying = true;
+      const unsub = subscribe((e) => {
+        if (replaying) buffer.push(e);
+        else if (e.seq > lastSeq) {
+          lastSeq = e.seq;
+          sendEnv(e);
+        }
+      });
+      send(": connected\n\n");
+      for (const e of list(since)) {
+        lastSeq = Math.max(lastSeq, e.seq);
+        sendEnv(e);
+      }
+      for (const e of buffer) {
+        if (e.seq > lastSeq) {
+          lastSeq = e.seq;
+          sendEnv(e);
+        }
+      }
+      replaying = false;
+
+      const hb = setInterval(() => send(": hb\n\n"), 15000);
+      cleanup = () => {
+        if (closed) return;
+        closed = true;
+        clearInterval(hb);
+        unsub();
+        try {
+          controller.close();
+        } catch {
+          /* already closed */
+        }
+      };
+      req.signal.addEventListener("abort", cleanup);
+      if (req.signal.aborted) cleanup();
+    },
+    cancel() {
+      cleanup();
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+      ...CORS_HEADERS,
+    },
+  });
+}
