@@ -207,7 +207,12 @@ export class CdpBackend {
   // Fresh start for a replay: back to the page where the run began.
   async reset() {
     if (this.dryRun) return;
-    if (this.attached) { await this.cdp.send('Page.reload').catch(() => {}); await sleep(800); return; }
+    if (this.attached) {
+      // attached app: go back to the location we attached at (its storage is left alone: it is the user's own app)
+      try { await navigate(this.cdp, this.startUrl); } catch { await this.cdp.send('Page.reload').catch(() => {}); }
+      await sleep(800);
+      return;
+    }
     await this.cdp.eval('(() => { try { localStorage.clear(); sessionStorage.clear(); } catch {} })()').catch(() => {});
     await this.cdp.send('Network.enable').catch(() => {});
     await this.cdp.send('Network.clearBrowserCookies').catch(() => {});

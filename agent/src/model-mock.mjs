@@ -45,8 +45,9 @@ const verifyPlans = [
 ];
 
 export class MockSession {
-  constructor({ kind, backend, script, log = () => {} }) {
+  constructor({ kind, backend, script, delay = 0, log = () => {} }) {
     this.kind = kind;
+    this.delay = delay;
     this.backend = backend;
     this.script = script || EXPLORE_SCRIPT;
     this.i = 0;
@@ -59,7 +60,7 @@ export class MockSession {
     const out = [];
     for (const a of actions) {
       if (!a.selector) { out.push(a); continue; }
-      const p = (await this.backend.locate?.(a.selector)) ?? { x: 200, y: 200 };
+      const p = (await this.backend?.locate?.(a.selector)) ?? { x: 200, y: 200 };
       const { selector, ...rest } = a;
       out.push({ ...rest, x: p.x, y: p.y });
     }
@@ -76,6 +77,7 @@ export class MockSession {
 
   async send(feedback) {
     this.usage.requests++;
+    if (this.delay) await new Promise(resolve => setTimeout(resolve, this.delay)); // simulate model latency
     if (this.kind === 'verify') return this.verifySend(feedback);
     const steer = (feedback.userTexts || []).find(t => t.startsWith('HUMAN STEER:'));
     const step = this.script[Math.min(this.i, this.script.length - 1)];
@@ -101,6 +103,6 @@ export class MockSession {
   }
 }
 
-export function createMockSession(kind, { backend, log } = {}) {
-  return new MockSession({ kind, backend, log });
+export function createMockSession(kind, { backend, log, delay } = {}) {
+  return new MockSession({ kind, backend, log, delay });
 }

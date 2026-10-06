@@ -13,6 +13,8 @@
   },
   "scripts": {
     "run": "node bin/astrahack.js",
+    "agent": "node agent/run.mjs",
+    "agent:test": "node --test agent/test/*.test.mjs",
     "qa": "node bin/qa.js",
     "capture-features": "node bin/feature-capture.js",
     "generate": "node --env-file-if-exists=.env generate.mjs",

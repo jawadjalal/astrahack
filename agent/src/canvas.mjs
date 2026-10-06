@@ -195,7 +195,7 @@ export class CanvasStreamer {
   // ----- semantic helpers used by the loop -----
 
   // Add the screenshot for step n. kind 'step' => main row; for verify rows pass idKey/row.
-  addStep({ n, shot, label, thought, arrowLabel, prev, row = 0, key, pointer, prevShot, finding = false }) {
+  addStep({ n, shot, label, thought, arrowLabel, prev, prevN, row = 0, key, pointer, prevShot }) {
     const id = key || this.stepId(n);
     const h = Math.round(LAYOUT.IMG_W * shot.height / shot.width);
     this.sizes.set(id, { w: LAYOUT.IMG_W, h });
@@ -216,29 +216,29 @@ export class CanvasStreamer {
     }
     if (thought) follow.push({ type: 'add_shape', id: `${id}-think`, kind: 'note', x, y: y + h + 40, text: trunc(thought, 260), color: 'yellow' });
     if (follow.length) this.ops(follow, `step ${id} extras`);
-    if (pointer && prevShot && this.features.cursor) {
-      const prevN = Number(prev.match(/(\d+)$/)?.[1] ?? n - 1);
-      this.optionalCursor(prevN, row, prevShot, pointer, arrowLabel);
-    }
-    if (thought) this.say(thought);
+    // agent presence: the cursor glides to the element just worked on (on the previous screenshot), then speaks
+    let cursored = false;
+    if (pointer && prevShot && prevN != null && this.features.cursor) cursored = this.optionalCursor(prevN, row, prevShot, pointer, String(arrowLabel).split(', ')[0]);
+    if (thought) this.say(thought, cursored ? undefined : id);
     this.focus([id]);
     return done;
   }
 
   optionalCursor(n, row, shot, point, label) {
     const f = this.features.cursor;
-    if (!f) return;
+    if (!f) return false;
     const at = this.canvasPoint(n, row, shot, point);
     const fields = f.fields || [];
-    const op = { type: 'cursor', x: at.x, y: at.y, ...(fields.includes('label') ? { label: trunc(label, 40) } : {}) };
-    this.optionalOp('cursor', op);
+    this.optionalOp('cursor', { type: 'cursor', x: at.x, y: at.y, ...(fields.includes('label') ? { label: trunc(label, 40) } : {}) });
+    return true;
   }
 
-  say(text) {
+  // Short reasoning caption. With no cursor move, hang it beside `target` (when the contract supports it).
+  say(text, target) {
     const f = this.features.say;
     if (!f) return;
     const field = ['text', 'message', 'caption', 'content'].find(k => f.fields?.includes(k)) || 'text';
-    this.optionalOp('say', { type: 'say', [field]: trunc(text, 200) });
+    this.optionalOp('say', { type: 'say', [field]: trunc(text, 200), ...(target && f.fields?.includes('target') ? { target } : {}) });
   }
 
   focus(ids) { this.ops([{ type: 'focus', ids }], 'focus'); }
