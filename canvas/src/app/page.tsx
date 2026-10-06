@@ -1,9 +1,6 @@
-"use client";
+import RunExperience from "../components/RunExperience";
 
-import dynamic from "next/dynamic";
-
-const Canvas = dynamic(() => import("../components/Canvas"), { ssr: false });
-
-export default function Home() {
-  return <Canvas />;
+export default async function Home({ searchParams }: { searchParams: Promise<{ run?: string; view?: string }> }) {
+  const params = await searchParams;
+  return <RunExperience initialRunId={params.run || null} initialCanvas={params.view === "canvas"} />;
 }

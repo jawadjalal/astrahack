@@ -1,0 +1,22 @@
+.launcher { min-height: 100svh; display: grid; place-items: center; padding: 32px 20px; background: #f7f7f6; color: #202124; }
+.overlay { position: fixed; inset: 0; z-index: 2000; overflow: auto; }
+.formPanel { width: min(100%, 620px); }
+.brand { margin: 0 0 28px; font-size: 15px; font-weight: 650; }
+.formPanel h1 { margin: 0; font-size: clamp(28px, 5vw, 38px); line-height: 1.2; letter-spacing: -0.025em; font-weight: 650; }
+.description { margin: 18px 0 32px; color: #62666b; line-height: 1.6; }
+.label { display: block; margin-bottom: 8px; font-size: 14px; font-weight: 600; }
+.fields { display: flex; gap: 10px; }
+.fields input { min-width: 0; flex: 1; border: 1px solid #b6babf; border-radius: 6px; background: white; color: #202124; padding: 13px 14px; font-size: 16px; }
+.fields button { border: 0; border-radius: 6px; background: #202124; color: white; padding: 13px 18px; font-size: 14px; font-weight: 600; white-space: nowrap; cursor: pointer; }
+.fields input:focus-visible, .fields button:focus-visible, .textButton:focus-visible, .target:focus-visible { outline: 2px solid #356fd1; outline-offset: 3px; }
+.fields button:disabled { opacity: .6; cursor: wait; }
+.help { margin-top: 12px; font-size: 13px; line-height: 1.5; color: #62666b; }
+.error { font-size: 14px; line-height: 1.5; color: #b12222; overflow-wrap: anywhere; }
+.textButton { padding: 4px 0; border: 0; background: none; color: inherit; font: inherit; font-size: 13px; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.formPanel > .textButton { margin-top: 24px; }
+.runPanel { position: fixed; top: 58px; left: 12px; z-index: 1000; width: min(360px, calc(100vw - 24px)); background: white; color: #202124; border: 1px solid #d9dce0; border-radius: 8px; padding: 14px 16px; font-size: 13px; box-shadow: 0 2px 8px #0000000c; }
+.runHeading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.runHeading strong { font-size: 14px; }
+.target { display: block; margin-top: 8px; color: #525962; overflow-wrap: anywhere; }
+.runPanel p { margin: 8px 0 0; line-height: 1.5; }
+@media (max-width: 540px) { .fields { flex-direction: column; } .fields button { min-height: 46px; } }
