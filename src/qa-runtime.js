@@ -15,7 +15,7 @@ export class RunLimitError extends Error {
 }
 
 /** Reserve requests synchronously before awaiting so concurrent workers share one hard call cap. */
-export function createRunBudget(request, { maxRequests, maxDurationMs = 300000, maxOutputTokens = 2048, signal } = {}) {
+export function createRunBudget(request, { maxRequests, maxDurationMs = 900000, maxOutputTokens = 8192, signal } = {}) {
   if (maxRequests !== undefined) integerLimit('maxRequests', maxRequests, 1, 10000);
   integerLimit('maxDurationMs', maxDurationMs, 1000, 7200000);
   integerLimit('maxOutputTokens', maxOutputTokens, 256, 32768);

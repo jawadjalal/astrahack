@@ -3,8 +3,8 @@
   "brief": "Describe the product and exercise its main read-only journeys.",
   "maxPages": 50,
   "maxDepth": 4,
-  "maxTurns": 6,
-  "maxActions": 25,
-  "maxDurationMs": 300000,
-  "maxOutputTokens": 2048
+  "maxTurns": 20,
+  "maxActions": 100,
+  "maxDurationMs": 900000,
+  "maxOutputTokens": 8192
 }

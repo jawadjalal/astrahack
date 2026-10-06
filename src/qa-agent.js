@@ -29,8 +29,8 @@ const assessmentSchema = {
   required: ['productUnderstanding', 'observedFeatures', 'journeysExercised', 'issues', 'limitations']
 };
 
-export async function runQaAgent({ url, chrome, output, brief = '', model, maxTurns = 12, maxActions = 40, headless = true,
-  request = createResponse, runtime, signal, maxDurationMs = 300000, maxOutputTokens = 2048 }) {
+export async function runQaAgent({ url, chrome, output, brief = '', model, maxTurns = 20, maxActions = 100, headless = true,
+  request = createResponse, runtime, signal, maxDurationMs = 900000, maxOutputTokens = 8192 }) {
   if (!url || !chrome || !output) throw new Error('url, chrome, and output are required');
   integerLimit('maxTurns', maxTurns, 1, 50);
   integerLimit('maxActions', maxActions, 1, 500);

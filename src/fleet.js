@@ -111,8 +111,8 @@ export function combineAgentReports(crawl, jobs, results, model = qaModel()) {
 export async function runFleet({
   url, chrome, output, brief = '', model,
   maxPages = 50, maxDepth = 4, maxAgents, concurrency,
-  maxTurns = 8, maxActions = 25, headless = true,
-  maxRequests, maxDurationMs = 300000, maxOutputTokens = 2048, signal,
+  maxTurns = 20, maxActions = 100, headless = true,
+  maxRequests, maxDurationMs = 900000, maxOutputTokens = 8192, signal,
   request = createResponse, crawl = crawlSite, agent = runQaAgent, onProgress
 }) {
   if (!url || !chrome || !output) throw new Error('url, chrome, and output are required');
