@@ -15,7 +15,7 @@ import {
 } from "../../lib/upload";
 import MediaOverlay from "./MediaOverlay";
 import { openLightbox } from "./Lightbox";
-import { setDragging, setMediaEditor, toasts } from "./mediaStore";
+import { getMediaEditor, setDragging, setMediaEditor, toasts } from "./mediaStore";
 import { seekVideo } from "./videoRegistry";
 
 // ---- one overlay root (toasts, drop hint, lightbox) living outside tldraw's tree ----
@@ -87,6 +87,43 @@ function nameClipboardFile(f: File, i: number): File {
 }
 
 /**
+ * Upload/reference media and add it to the canvas with a progress toast per item. `at` is a page point
+ * (defaults to the middle of the viewport). Also what the Add menu should call: ingestMedia(files).
+ */
+export function ingestMedia(items: MediaInput[], at?: Point) {
+  if (!items.length) return;
+  const ed = getMediaEditor();
+  let point = at;
+  if (!point) {
+    const c = ed?.getViewportPageBounds().center;
+    point = c ? { x: c.x - 320, y: c.y - 220 } : { x: 0, y: 0 };
+  }
+  const ids = items.map((it) => toasts.add(labelFor(it)));
+  void addMediaBatch(items, point, (i, s) => {
+    const id = ids[i];
+    switch (s.phase) {
+      case "preparing":
+        toasts.update(id, { phase: "preparing" });
+        break;
+      case "uploading":
+        toasts.update(id, { phase: "uploading", progress: s.progress });
+        break;
+      case "placing":
+        toasts.update(id, { phase: "placing", progress: 100 });
+        break;
+      case "done":
+        toasts.update(id, { phase: "done", progress: 100 });
+        setTimeout(() => toasts.remove(id), 1800);
+        break;
+      case "error":
+        toasts.update(id, { phase: "error", message: s.message });
+        setTimeout(() => toasts.remove(id), 9000);
+        break;
+    }
+  });
+}
+
+/**
  * Media intake for the canvas: drag-drop (multiple files or a dragged image link), clipboard paste of
  * images/videos, and pasting a URL to an image / mp4. Each file gets a small progress toast. Mount once
  * from Canvas.tsx: `useMediaIntake(editor)`.
@@ -113,32 +150,7 @@ export function useMediaIntake(editor: Editor | null) {
       return { x: c.x - 200, y: c.y - 150 };
     };
 
-    const ingest = (items: MediaInput[], at: Point) => {
-      if (!items.length) return;
-      const ids = items.map((it) => toasts.add(labelFor(it)));
-      void addMediaBatch(items, at, (i, s) => {
-        const id = ids[i];
-        switch (s.phase) {
-          case "preparing":
-            toasts.update(id, { phase: "preparing" });
-            break;
-          case "uploading":
-            toasts.update(id, { phase: "uploading", progress: s.progress });
-            break;
-          case "placing":
-            toasts.update(id, { phase: "placing", progress: 100 });
-            break;
-          case "done":
-            toasts.update(id, { phase: "done", progress: 100 });
-            setTimeout(() => toasts.remove(id), 1800);
-            break;
-          case "error":
-            toasts.update(id, { phase: "error", message: s.message });
-            setTimeout(() => toasts.remove(id), 9000);
-            break;
-        }
-      });
-    };
+    const ingest = ingestMedia;
 
     const onMove = (e: PointerEvent) => {
       last = { x: e.clientX, y: e.clientY };
