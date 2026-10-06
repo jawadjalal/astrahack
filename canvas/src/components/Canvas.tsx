@@ -9,6 +9,7 @@ import type { Envelope } from "../lib/ops";
 import { activity } from "../lib/activity";
 import { makeIguraTheme } from "../lib/ignuraTheme";
 import { fitAll } from "../lib/fit";
+import { useMediaIntake } from "./media/useMediaIntake";
 import { customShapeUtils } from "./shapes";
 import { motion } from "./shapes/RoughBox";
 import { Toolbar } from "./ui/Toolbar";
@@ -39,15 +40,6 @@ const components: TLUiComponents = {
   SharePanel: null,
   StylePanel: IguraStylePanel,
 };
-
-async function imageSize(url: string): Promise<{ w: number; h: number }> {
-  return new Promise((resolve) => {
-    const img = new window.Image();
-    img.onload = () => resolve({ w: img.naturalWidth || 800, h: img.naturalHeight || 600 });
-    img.onerror = () => resolve({ w: 800, h: 600 });
-    img.src = url;
-  });
-}
 
 export default function Canvas() {
   const [editor, setEditor] = useState<Editor | null>(null);
@@ -177,46 +169,8 @@ export default function Canvas() {
     return () => window.removeEventListener("keydown", key);
   }, [present]);
 
-  // ---- drag & drop files -> /api/upload -> /api/ops ----
-  const onDropCapture = useCallback(
-    async (e: React.DragEvent) => {
-      const files = Array.from(e.dataTransfer?.files ?? []).filter(
-        (f) => f.type.startsWith("image/") || f.type === "video/mp4",
-      );
-      if (!files.length || !editor) return;
-      e.preventDefault();
-      e.stopPropagation();
-      const p = editor.screenToPage({ x: e.clientX, y: e.clientY });
-      let offset = 0;
-      for (const file of files) {
-        try {
-          const fd = new FormData();
-          fd.append("file", file);
-          const up = await fetch(withBase("/api/upload"), { method: "POST", body: fd });
-          const { url } = (await up.json()) as { url: string };
-          const x = p.x + offset;
-          const y = p.y + offset;
-          offset += 40;
-          let op: Record<string, unknown>;
-          if (file.type.startsWith("video/")) {
-            op = { type: "add_video", src: url, x, y, label: file.name };
-          } else {
-            const { w, h } = await imageSize(withBase(url));
-            const s = Math.min(1, 900 / w);
-            op = { type: "add_image", src: url, x, y, w: w * s, h: h * s, label: file.name };
-          }
-          await fetch(withBase("/api/ops"), {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify(op),
-          });
-        } catch (err) {
-          console.error("[canvas] upload failed", err);
-        }
-      }
-    },
-    [editor],
-  );
+  // ---- media intake: drag-drop, paste, URL paste, progress toasts, lightbox ----
+  useMediaIntake(editor);
 
   const clearAll = async () => {
     await fetch(withBase("/api/state"), { method: "DELETE" });
@@ -229,10 +183,6 @@ export default function Canvas() {
       className="ig-root"
       data-present={present || undefined}
       style={{ position: "fixed", inset: 0 }}
-      onDropCapture={onDropCapture}
-      onDragOverCapture={(e) => {
-        if (e.dataTransfer?.types.includes("Files")) e.preventDefault();
-      }}
     >
       <Tldraw shapeUtils={customShapeUtils} themes={themes} components={components} onMount={handleMount} />
 

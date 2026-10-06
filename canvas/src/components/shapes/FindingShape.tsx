@@ -11,6 +11,7 @@ import {
 import { sevColor, sevInk, sevTint } from "./severity";
 import { RoughBox, useEnterOnce } from "./RoughBox";
 import { withBase } from "../../lib/base";
+import { seekAndFocus } from "../media/videoRegistry";
 
 declare module "tldraw" {
   interface TLGlobalShapePropsMap {
@@ -176,6 +177,7 @@ function FindingBody({ shape }: { shape: FindingShape }) {
                 data-video-target={target || undefined}
                 title={`Jump to ${formatTimestamp(timestamp)} in the video`}
                 onPointerDown={(e) => e.stopPropagation()}
+                onClick={() => (target ? seekAndFocus(editor, target, timestamp) : undefined)}
               >
                 <svg width="9" height="10" viewBox="0 0 9 10" aria-hidden>
                   <path d="M1 1l7 4-7 4z" fill="currentColor" />
