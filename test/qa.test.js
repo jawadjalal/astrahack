@@ -61,7 +61,7 @@ test('Luna computer loop records actions and verifies evidence references', { sk
     assert.deepEqual(calls[1].tools, [{ type: 'computer' }], 'Computer outputs require the tool to stay enabled');
     assert.equal(calls[1].input[0].call_id, 'call-1');
     assert.equal(JSON.parse(calls[1].input[1].content[0].text).executedSteps[0].step, 1);
-    assert.equal(calls[0].max_output_tokens, 2048);
+    assert.equal(calls[0].max_output_tokens, 8192);
     assert.equal(report.usage.requests, 2);
     assert.ok((await stat(join(out, report.steps[0].screenshot))).size > 100);
   } finally { await rm(directory, { recursive: true, force: true }); }

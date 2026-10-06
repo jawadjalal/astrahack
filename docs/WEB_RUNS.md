@@ -70,7 +70,7 @@ Ctrl+C stops polling and signals the active pipeline. The worker runs the pipeli
 
 ## Limits and deployment boundary
 
-Exploration has no model request count cap and no fixed agent allocation. The worker lets the fleet derive concurrency from the observed missions. It sets five minutes of fleet budget, eight turns and 25 actions per browser, and 2,048 maximum output tokens per response. Initial crawling uses up to 50 pages and depth four. The existing crawler does not itself stop immediately when the fleet deadline expires; the fleet checks its remaining budget after crawling. QA analysis and screenshot selection make additional model calls outside the fleet budget. These limits are not a dollar cap. Model defaults and explicit environment overrides remain those of the existing modules: Luna is the default, with no automatic expensive fallback.
+Exploration has no model request count cap and no fixed agent allocation. The worker lets the fleet derive concurrency from the observed missions. It inherits a 15-minute fleet deadline, up to 20 turns and 100 actions per browser, and 8,192 maximum output tokens per response. Browser concurrency also accounts for available CPU/RAM. Initial crawling uses up to 50 pages and depth four. The existing crawler does not itself stop immediately when the fleet deadline expires; the fleet checks its remaining budget after crawling. QA analysis and screenshot selection make additional model calls outside the fleet budget. These limits are not a dollar cap. Model defaults and explicit environment overrides remain those of the existing modules: Luna is the default, with no automatic expensive fallback.
 
 The website host does not run the local Chrome process. Leave the worker computer awake and the command running, or move this same worker to a persistent machine with Chrome installed. Long browser jobs do not run inside a Next.js request. The poll connection is outgoing HTTPS, so no incoming tunnel to the worker computer is required.
 
@@ -85,3 +85,4 @@ node --test test/web-run-worker.test.js test/web-run-pipeline.test.js
 ```
 
 These tests use a local fixture API and injected stages. They verify submitted URL propagation, `/astrahack` API routing, heartbeat and terminal statuses, prevention of a repeated attempt, private target rejection, request timeouts, shutdown handling, and publication of surviving evidence after stage failures. They do not call a paid model or start Chrome.
+

@@ -60,8 +60,7 @@ export async function runWebPipeline(job, options = {}) {
   };
   fleetResult = await stage('exploring', 'Exploring the website and recording evidence.', () => fleet({
     url: job.url, chrome, output, headless: true,
-    maxPages: 50, maxDepth: 4, maxTurns: 8, maxActions: 25,
-    maxDurationMs: 300_000, maxOutputTokens: 2048, signal,
+    signal,
     onProgress: event => progress('exploring', event.phase === 'crawl' ? 'Mapping website pages.' : 'Testing observed website journeys.'),
   }));
   if (fleetResult && fleetResult.fleet?.status !== 'completed') incomplete = true;
