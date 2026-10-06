@@ -40,6 +40,34 @@ test('provider failures consume their reserved slot and do not fabricate token u
   assert.equal(budget.usage.totalTokens, 0);
 });
 
+test('incomplete provider responses retain billed usage while counting as failed requests', async () => {
+  const incomplete = Object.assign(new Error('OpenAI response status: incomplete'), { response: {
+    model: 'billed-model', status: 'incomplete',
+    usage: { input_tokens: 120, input_tokens_details: { cached_tokens: 80 }, output_tokens: 64, total_tokens: 184 }
+  } });
+  const budget = createRunBudget(async () => { throw incomplete; });
+  await assert.rejects(budget.request({ model: 'requested-model' }), error => error === incomplete);
+  assert.equal(budget.usage.requests, 1);
+  assert.equal(budget.usage.failedRequests, 1);
+  assert.equal(budget.usage.completedRequests, 0);
+  assert.equal(budget.usage.inputTokens, 120);
+  assert.equal(budget.usage.cachedInputTokens, 80);
+  assert.equal(budget.usage.outputTokens, 64);
+  assert.equal(budget.usage.totalTokens, 184);
+  assert.deepEqual(budget.usage.byModel['billed-model'], { requests: 1, inputTokens: 120, cachedInputTokens: 80, outputTokens: 64, totalTokens: 184 });
+});
+
+test('model names matching object prototype properties each receive isolated usage totals', async () => {
+  const budget = createRunBudget(async payload => ({ model: payload.model, usage: { input_tokens: 3, output_tokens: 2, total_tokens: 5 } }));
+  for (const model of ['__proto__', 'constructor', 'toString']) {
+    await budget.request({ model });
+    assert.equal(Object.hasOwn(budget.usage.byModel, model), true);
+    assert.deepEqual(budget.usage.byModel[model], { requests: 1, inputTokens: 3, cachedInputTokens: 0, outputTokens: 2, totalTokens: 5 });
+  }
+  assert.equal(budget.usage.requests, 3);
+  assert.equal(budget.usage.totalTokens, 15);
+});
+
 test('shared output cap is sent to every provider call and usage aggregates by response model', async () => {
   const sent = [];
   const responses = [
