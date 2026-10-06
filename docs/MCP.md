@@ -69,12 +69,26 @@ The OpenAI Responses API only accepts remote MCP servers over HTTP (`{"type":"mc
 | `canvas_add_finding` | Finding card: title, severity, expected/actual, verified, target id, video timestamp. |
 | `canvas_move` / `canvas_update` / `canvas_delete` | Edit an element by id. |
 | `canvas_focus` | Pan/zoom the human's viewport to `ids` or a pixel `box`. |
+| `canvas_cursor` | Glide your avatar (orange Ignura cursor + name tag) to canvas `x,y`; optional `label` sets the tag. Add/edit tools already move it for you; use this to point at something you have not changed. |
+| `canvas_say` | Leave a speech bubble on the board (`text`), hung off an element (`target` id) or pointing at `x,y`. It stays on the canvas (shows in screenshots) and your cursor glides to it. |
 | `canvas_clear` | Wipe the board (`DELETE /api/state`). |
 | `canvas_get_state` | Compact element list (id, type, position, size, label, props) replayed from the op log, with overall bounds and next free x/y. |
 | `canvas_layout_flow` | Lay existing ids out left-to-right (or `down`) with a gap and add arrows between consecutive ones. |
 | `canvas_batch` | Post raw ops (validated against `OpSchema`) in one call. |
 
 All `add_*` tools accept an optional `id`. Pick your own ids when later calls reference them; otherwise ids are generated and returned in the tool result.
+
+## Agent presence: cursor and speech
+
+The canvas shows your agent as an orange Ignura cursor with a name tag (default "Iggy") that glides to every element you add, and an **Activity** panel on the left lists what you did in plain language ("Added screenshot: Signup", "Flagged high: Signup button does nothing"). Clicking a row zooms to that element. Two additive ops (raw JSON works with `POST /api/ops` and `canvas_batch` too):
+
+```json
+{ "type": "cursor", "x": 560, "y": 120, "label": "QA agent" }
+{ "type": "say", "text": "This button does nothing on the second tap", "target": "signup" }
+{ "type": "say", "text": "Starting with the signup flow", "x": 0, "y": -40 }
+```
+
+`say` bubbles are real canvas elements (they have an id, can be moved/deleted like anything else). New arrows and annotation boxes draw themselves on, cards pop in, findings stamp in; all of it is skipped on reload and under `prefers-reduced-motion`.
 
 ## Example agent run: teardown map
 
@@ -87,7 +101,8 @@ All `add_*` tools accept an optional `id`. Pick your own ids when later calls re
 6. canvas_add_finding    {x:1100, y:1000, title:"Checkout CTA clipped on small screens", severity:"high", expected:"CTA visible without scrolling", actual:"CTA cut off by tab bar", target:"cart", verified:true}
 7. canvas_add_arrow      {from:"finding-xxxx", to:"cart", label:"see"}   // use the id returned in step 6
 8. canvas_get_state      {}                                              // check layout, find free space
-9. canvas_focus          {ids:["login","home","cart"]}
+9. canvas_say            {text:"Cart CTA is the weak spot", target:"cart"}
+10. canvas_focus         {ids:["login","home","cart"]}
 ```
 
 ## Gotchas

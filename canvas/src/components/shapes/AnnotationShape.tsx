@@ -9,6 +9,7 @@ import {
   type TLShapeId,
 } from "tldraw";
 import { sevColor } from "./severity";
+import { RoughBox, useEnterOnce } from "./RoughBox";
 
 declare module "tldraw" {
   interface TLGlobalShapePropsMap {
@@ -63,52 +64,64 @@ export class AnnotationShapeUtil extends ShapeUtil<AnnotationShape> {
   }
 
   component(shape: AnnotationShape) {
-    const { w, h, label, severity } = shape.props;
-    const color = sevColor(severity);
-    return (
-      <HTMLContainer style={{ width: w, height: h, pointerEvents: "none" }}>
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            boxSizing: "border-box",
-            border: `3px solid ${color}`,
-            borderRadius: 4,
-            background: `${color}14`,
-            boxShadow: `0 0 0 1px #fff8, 0 0 12px ${color}55`,
-            pointerEvents: "none",
-          }}
-        />
-        {label ? (
-          <div
-            style={{
-              position: "absolute",
-              left: -3,
-              top: -22,
-              maxWidth: Math.max(w + 40, 160),
-              padding: "1px 8px",
-              font: "700 11px/19px system-ui, -apple-system, sans-serif",
-              color: "#fff",
-              background: color,
-              borderRadius: "5px 5px 5px 0",
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              pointerEvents: "none",
-            }}
-          >
-            {label}
-          </div>
-        ) : null}
-      </HTMLContainer>
-    );
+    return <AnnotationBody shape={shape} />;
   }
 
   getIndicatorPath(shape: AnnotationShape) {
     const path = new Path2D();
-    path.roundRect(0, 0, shape.props.w, shape.props.h, 4);
+    path.roundRect(0, 0, shape.props.w, shape.props.h, 6);
     return path;
   }
+}
+
+function AnnotationBody({ shape }: { shape: AnnotationShape }) {
+  const { w, h, label, severity } = shape.props;
+  const color = sevColor(severity);
+  const enter = useEnterOnce(shape.id);
+  return (
+    <HTMLContainer style={{ width: w, height: h, pointerEvents: "none" }}>
+      <RoughBox
+        w={w}
+        h={h}
+        seed={shape.id}
+        stroke={color}
+        strokeWidth={3.4}
+        radius={8}
+        shadow={false}
+        draw={enter}
+        tint={`${color}1f`}
+      />
+      {label ? (
+        <div
+          className={enter ? "ig-enter-tag" : undefined}
+          style={{
+            position: "absolute",
+            left: -4,
+            top: -30,
+            maxWidth: Math.max(w + 60, 180),
+            padding: "1px 10px 3px",
+            font: "600 14px/20px var(--f-pixel)",
+            letterSpacing: ".02em",
+            color: "#161616",
+            background: color,
+            border: "2.5px solid #161616",
+            borderRadius: "9px 9px 9px 3px",
+            boxShadow: "0 2.5px 0 #161616",
+            transform: "rotate(-1.5deg)",
+            transformOrigin: "left bottom",
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            pointerEvents: "none",
+            // label text stays readable on every severity fill
+            ...(severity === "critical" || severity === "low" ? { color: "#fff", textShadow: "0 1.5px 0 #161616" } : null),
+          }}
+        >
+          {label}
+        </div>
+      ) : null}
+    </HTMLContainer>
+  );
 }
 
 /** Absolute page rect for a fractional box on a target shape, or undefined if target is missing. */

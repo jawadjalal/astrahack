@@ -8,7 +8,9 @@ import {
   type RecordProps,
   type TLShape,
 } from "tldraw";
-import { sevColor, sevTint } from "./severity";
+import { sevColor, sevInk, sevTint } from "./severity";
+import { RoughBox, useEnterOnce } from "./RoughBox";
+import { withBase } from "../../lib/base";
 
 declare module "tldraw" {
   interface TLGlobalShapePropsMap {
@@ -29,9 +31,9 @@ declare module "tldraw" {
 export type FindingShape = TLShape<"finding">;
 
 export const FINDING_WIDTH = 360;
-const PAD = 16;
-const BODY_CHARS_PER_LINE = 52; // 12.5px system font in (360 - 2*16) px
-const TITLE_CHARS_PER_LINE = 36; // 15px semibold
+const PAD = 18;
+const BODY_CHARS_PER_LINE = 50; // 13px Geist in (360 - 2*18) px
+const TITLE_CHARS_PER_LINE = 30; // 18px Fraunces semibold
 
 export function formatTimestamp(t: number): string {
   const s = Math.max(0, Math.floor(t));
@@ -51,12 +53,12 @@ export function estimateFindingHeight(p: {
   expected?: string;
   actual?: string;
 }): number {
-  let h = PAD * 2 + 22 /* chip row */ + 10;
-  h += lines(p.title, TITLE_CHARS_PER_LINE) * 20 + 12;
+  let h = PAD * 2 + 26 /* chip row */ + 12;
+  h += lines(p.title, TITLE_CHARS_PER_LINE) * 24 + 12;
   for (const body of [p.expected, p.actual]) {
-    if (body) h += 14 /* label */ + 4 + lines(body, BODY_CHARS_PER_LINE) * 17 + 10;
+    if (body) h += 20 /* label */ + 2 + lines(body, BODY_CHARS_PER_LINE) * 19 + 10;
   }
-  h += 1 + 10 + 22; // divider + badge row
+  h += 1 + 12 + 24; // divider + badge row
   return Math.ceil(h);
 }
 
@@ -120,10 +122,12 @@ export class FindingShapeUtil extends ShapeUtil<FindingShape> {
 }
 
 function FindingBody({ shape }: { shape: FindingShape }) {
-  const { w, h, title, severity, expected, actual, verified, timestamp } = shape.props;
+  const { w, h, title, severity, expected, actual, verified, timestamp, target } = shape.props;
   const color = sevColor(severity);
+  const ink = sevInk(severity);
   const inner = useRef<HTMLDivElement>(null);
   const editor = useEditor();
+  const enter = useEnterOnce(shape.id);
 
   // Correct the estimated height to the real rendered height.
   useLayoutEffect(() => {
@@ -137,106 +141,83 @@ function FindingBody({ shape }: { shape: FindingShape }) {
 
   return (
     <HTMLContainer style={{ width: w, height: h, pointerEvents: "all" }}>
-      <div
-        style={{
-          width: w,
-          height: h,
-          boxSizing: "border-box",
-          background: "#fff",
-          border: "1px solid #e5e7eb",
-          borderLeft: `5px solid ${color}`,
-          borderRadius: 12,
-          boxShadow: "0 4px 14px rgba(17,24,39,.10)",
-          overflow: "hidden",
-          font: "400 12.5px/17px system-ui, -apple-system, sans-serif",
-          color: "#111827",
-        }}
-      >
-        <div ref={inner} style={{ padding: PAD, paddingLeft: PAD - 4 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, height: 22 }}>
+      <div className={enter ? "ig-finding ig-enter" : "ig-finding"} style={{ width: w, height: h, position: "relative", color: "var(--ink)" }}>
+        <RoughBox w={w} h={h} seed={shape.id} fill="var(--card)" radius={14} />
+        {/* washi tape holding the card down */}
+        <img
+          src={withBase("/ignura/doodles/kit-tape-butter.svg")}
+          alt=""
+          draggable={false}
+          style={{ position: "absolute", top: -14, left: w / 2 - 44, width: 88, transform: "rotate(-3deg)", pointerEvents: "none" }}
+        />
+        <div ref={inner} style={{ position: "relative", padding: `${PAD}px ${PAD}px ${PAD - 2}px` }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, height: 26 }}>
             <span
+              className={enter ? "ig-stamp ig-stamp-in" : "ig-stamp"}
               style={{
                 background: sevTint(severity),
-                color,
-                border: `1px solid ${color}`,
-                borderRadius: 999,
-                padding: "1px 9px",
-                font: "700 10.5px/16px system-ui, sans-serif",
-                letterSpacing: ".06em",
+                color: ink,
+                border: `2.5px solid ${color}`,
+                borderRadius: 8,
+                padding: "1px 9px 2px",
+                font: "600 13px/18px var(--f-pixel)",
+                letterSpacing: ".08em",
                 textTransform: "uppercase",
+                boxShadow: `0 2px 0 ${color}`,
               }}
             >
               {severity}
             </span>
             {timestamp != null ? (
-              <span
-                style={{
-                  marginLeft: "auto",
-                  font: "600 11.5px/16px ui-monospace, SFMono-Regular, Menlo, monospace",
-                  color: "#6b7280",
-                }}
+              <button
+                type="button"
+                className="ig-ts-chip"
+                data-ts={timestamp}
+                data-video-target={target || undefined}
+                title={`Jump to ${formatTimestamp(timestamp)} in the video`}
+                onPointerDown={(e) => e.stopPropagation()}
               >
-                @ {formatTimestamp(timestamp)}
-              </span>
+                <svg width="9" height="10" viewBox="0 0 9 10" aria-hidden>
+                  <path d="M1 1l7 4-7 4z" fill="currentColor" />
+                </svg>
+                {formatTimestamp(timestamp)}
+              </button>
             ) : null}
           </div>
           <div
             style={{
-              margin: "10px 0 12px",
-              font: "600 15px/20px system-ui, -apple-system, sans-serif",
+              margin: "12px 0 12px",
+              font: "640 18px/24px var(--f-display)",
+              letterSpacing: "-.01em",
+              fontVariationSettings: '"SOFT" 100, "WONK" 1',
               wordBreak: "break-word",
             }}
           >
             {title}
           </div>
-          {expected ? <Section label="Expected" text={expected} /> : null}
-          {actual ? <Section label="Actual" text={actual} accent={color} /> : null}
+          {expected ? <Section label="expected" text={expected} accent="#2F8F5F" /> : null}
+          {actual ? <Section label="actual" text={actual} accent={ink} /> : null}
           <div
             style={{
-              borderTop: "1px solid #f1f5f9",
+              borderTop: "2px dashed var(--line-2)",
               marginTop: 10,
-              paddingTop: 10,
+              paddingTop: 12,
               display: "flex",
               alignItems: "center",
-              height: 22,
+              height: 24,
               boxSizing: "content-box",
             }}
           >
             {verified ? (
-              <span
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 5,
-                  color: "#15803d",
-                  background: "#f0fdf4",
-                  border: "1px solid #86efac",
-                  borderRadius: 999,
-                  padding: "1px 9px 1px 6px",
-                  font: "600 11.5px/16px system-ui, sans-serif",
-                }}
-              >
-                <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
-                  <circle cx="8" cy="8" r="8" fill="#16a34a" />
-                  <path d="M4.5 8.3l2.2 2.2 4.8-4.8" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+              <span className="ig-chip ig-chip-ok">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden>
+                  <circle cx="8" cy="8" r="7.2" fill="#8FD8AE" stroke="#161616" strokeWidth="1.6" />
+                  <path d="M4.6 8.3l2.2 2.2 4.6-4.8" stroke="#161616" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
-                Verified
+                verified
               </span>
             ) : (
-              <span
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  color: "#6b7280",
-                  background: "#f9fafb",
-                  border: "1px dashed #9ca3af",
-                  borderRadius: 999,
-                  padding: "1px 9px",
-                  font: "600 11.5px/16px system-ui, sans-serif",
-                }}
-              >
-                Unverified
-              </span>
+              <span className="ig-chip ig-chip-un">unverified</span>
             )}
           </div>
         </div>
@@ -245,21 +226,11 @@ function FindingBody({ shape }: { shape: FindingShape }) {
   );
 }
 
-function Section({ label, text, accent }: { label: string; text: string; accent?: string }) {
+function Section({ label, text, accent }: { label: string; text: string; accent: string }) {
   return (
     <div style={{ marginBottom: 10 }}>
-      <div
-        style={{
-          font: "700 10px/14px system-ui, sans-serif",
-          letterSpacing: ".08em",
-          textTransform: "uppercase",
-          color: accent ?? "#6b7280",
-          marginBottom: 4,
-        }}
-      >
-        {label}
-      </div>
-      <div style={{ color: "#374151", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{text}</div>
+      <div style={{ font: "600 19px/20px var(--f-hand)", color: accent, marginBottom: 2 }}>{label}</div>
+      <div style={{ font: "400 13px/19px var(--f-body)", color: "var(--ink-2)", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{text}</div>
     </div>
   );
 }

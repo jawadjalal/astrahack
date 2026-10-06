@@ -8,17 +8,18 @@ import {
   type FindingShape,
 } from "./FindingShape";
 import { AnnotationShapeUtil, boxOnTarget, reflowAnnotations, type AnnotationShape } from "./AnnotationShape";
+import { SpeechShapeUtil, SPEECH_WIDTH, estimateSpeechHeight, type SpeechShape } from "./SpeechShape";
 import { SEVERITY_TLDRAW_COLOR, type Severity } from "./severity";
 import { HiliteShapeUtil, type HiliteShape } from "./HiliteShape";
 
-export { VideoShapeUtil, FindingShapeUtil, AnnotationShapeUtil, reflowAnnotations };
+export { VideoShapeUtil, FindingShapeUtil, AnnotationShapeUtil, SpeechShapeUtil, reflowAnnotations };
 export { estimateFindingHeight, formatTimestamp } from "./FindingShape";
-export type { VideoShape, FindingShape, AnnotationShape };
+export type { VideoShape, FindingShape, AnnotationShape, SpeechShape };
 export { HiliteShapeUtil };
 export type { HiliteShape };
 
 /** Pass to `<Tldraw shapeUtils={customShapeUtils} />`. */
-export const customShapeUtils = [VideoShapeUtil, FindingShapeUtil, AnnotationShapeUtil, HiliteShapeUtil];
+export const customShapeUtils = [VideoShapeUtil, FindingShapeUtil, AnnotationShapeUtil, HiliteShapeUtil, SpeechShapeUtil];
 
 type AnnotateOp = Extract<Op, { type: "annotate" }>;
 type FindingOp = Extract<Op, { type: "add_finding" }>;
@@ -31,7 +32,7 @@ type Pending =
 const pending: Pending[] = [];
 const listening = new WeakMap<Editor, () => void>();
 
-const CUSTOM_TYPES = new Set(["add_video", "add_finding", "annotate"]);
+const CUSTOM_TYPES = new Set(["add_video", "add_finding", "annotate", "say"]);
 
 function shapeIdFor(id: string | undefined): TLShapeId {
   return id ? createShapeId(id) : createShapeId();
@@ -54,9 +55,38 @@ export function applyCustomOp(editor: Editor, op: Op): boolean {
     case "annotate":
       addAnnotation(editor, op, shapeIdFor(op.id));
       break;
+    case "say":
+      addSpeech(editor, op);
+      break;
   }
   flushPending(editor);
   return true;
+}
+
+/** Where the agent's avatar was last parked, for `say` ops without a target or x/y. */
+let lastSpot: { x: number; y: number } | null = null;
+export function noteAgentSpot(x: number, y: number) {
+  lastSpot = { x, y };
+}
+
+function addSpeech(editor: Editor, op: Extract<Op, { type: "say" }>) {
+  const id = shapeIdFor(op.id);
+  if (editor.getShape(id)) return;
+  const h = estimateSpeechHeight(op.text);
+  // The tail tip is the spot the agent "stands" on; the bubble floats up and to the right of it.
+  let tip = { x: op.x ?? 0, y: op.y ?? 0 };
+  const tb = op.target ? editor.getShapePageBounds(createShapeId(op.target)) : undefined;
+  if (tb) tip = { x: tb.maxX - 44, y: tb.y + 10 };
+  else if (op.x == null || op.y == null) tip = lastSpot ? { x: lastSpot.x, y: lastSpot.y } : editor.getViewportPageBounds().center;
+  const bx = tip.x + 12;
+  const by = tip.y - h - 26;
+  editor.createShape<SpeechShape>({
+    id,
+    type: "speech",
+    x: bx,
+    y: by,
+    props: { w: SPEECH_WIDTH, h, text: op.text, tipX: tip.x - bx, tipY: tip.y - by },
+  });
 }
 
 function addVideo(editor: Editor, op: Extract<Op, { type: "add_video" }>) {

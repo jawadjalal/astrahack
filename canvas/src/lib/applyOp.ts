@@ -9,18 +9,20 @@ import {
 } from "tldraw";
 import type { Envelope, Op } from "./ops";
 import { withBase } from "./base";
-import { applyCustomOp } from "../components/shapes";
+import { applyCustomOp, noteAgentSpot } from "../components/shapes";
 import { applyMarkupOp, isMarkupCreate, isMarkupOp } from "./markup";
+import { agentBus } from "./agentBus";
+import { animateIn } from "./enterAnim";
+import { fitAll, fitBox } from "./fit";
 
 export type ApplyOptions = {
   /** Move the camera to newly added shapes. */
   follow?: boolean;
-  /** Fade new shapes in (skipped for bulk replay). */
+  /** Play entrance animations and glide the agent avatar (skipped for bulk replay). */
   animate?: boolean;
 };
 
 const FOCUS_MS = 400;
-const FADE_MS = 350;
 
 const sid = (id: string) => createShapeId(id);
 const labelId = (id: string) => createShapeId(`${id}:label`);
@@ -46,32 +48,6 @@ function loadImageSize(src: string): Promise<{ w: number; h: number }> {
   });
 }
 
-function setOpacity(editor: Editor, ids: TLShapeId[], opacity: number | ((id: TLShapeId) => number)) {
-  const partials = ids
-    .map((id) => editor.getShape(id))
-    .filter((s): s is NonNullable<typeof s> => !!s)
-    .map((s) => ({ id: s.id, type: s.type, opacity: typeof opacity === "function" ? opacity(s.id) : opacity }) as TLShapePartial);
-  if (!partials.length) return;
-  const ro = editor.getIsReadonly();
-  if (ro) editor.updateInstanceState({ isReadonly: false });
-  try {
-    editor.run(() => editor.updateShapes(partials), { history: "ignore", ignoreShapeLock: true });
-  } finally {
-    if (ro) editor.updateInstanceState({ isReadonly: true });
-  }
-}
-
-// `rest` = the opacity each shape had before it was faded out (translucent marks keep theirs).
-function fadeIn(editor: Editor, ids: TLShapeId[], rest: Map<TLShapeId, number>) {
-  const start = performance.now();
-  const step = (now: number) => {
-    const t = Math.max(0, Math.min(1, (now - start) / FADE_MS));
-    setOpacity(editor, ids, (id) => t * (rest.get(id) ?? 1));
-    if (t < 1) requestAnimationFrame(step);
-  };
-  requestAnimationFrame(step);
-}
-
 function boundsOf(editor: Editor, ids: TLShapeId[]): Box | null {
   let box: Box | null = null;
   for (const id of ids) {
@@ -83,16 +59,12 @@ function boundsOf(editor: Editor, ids: TLShapeId[]): Box | null {
 }
 
 function zoomTo(editor: Editor, box: Box, maxZoom: number) {
-  editor.zoomToBounds(box, {
-    animation: { duration: FOCUS_MS },
-    inset: 120,
-    targetZoom: maxZoom,
-  });
+  fitBox(editor, box, { maxZoom, duration: FOCUS_MS, pad: 60 });
 }
 
 type PropsRecord = Record<string, unknown>;
 
-async function applyCore(editor: Editor, op: Op, seq: number): Promise<"custom" | null> {
+async function applyCore(editor: Editor, op: Op, seq: number, animateCursor: boolean): Promise<"custom" | null> {
   switch (op.type) {
     case "add_image": {
       const key = opKey(op, seq);
@@ -139,30 +111,33 @@ async function applyCore(editor: Editor, op: Op, seq: number): Promise<"custom" 
       });
       let labelX = op.x;
       if (op.step != null) {
+        // butter step badge, hand-drawn edge, pixel type
         editor.createShape({
           id: stepId(key),
           type: "geo",
           x: op.x,
-          y: op.y - 40,
+          y: op.y - 46,
           props: {
             geo: "rectangle",
-            w: 96,
-            h: 32,
+            w: 124,
+            h: 36,
             fill: "solid",
-            color: "blue",
+            color: "yellow",
+            dash: "draw",
+            font: "mono",
             size: "s",
             richText: toRichText(`Step ${op.step}`),
           },
         });
-        labelX = op.x + 106;
+        labelX = op.x + 136;
       }
       if (op.label) {
         editor.createShape({
           id: labelId(key),
           type: "text",
           x: labelX,
-          y: op.y - (op.step != null ? 38 : 36),
-          props: { richText: toRichText(op.label), size: "m", autoSize: true },
+          y: op.y - (op.step != null ? 46 : 40),
+          props: { richText: toRichText(op.label), size: "l", font: "draw", autoSize: true },
         });
       }
       return null;
@@ -311,17 +286,74 @@ async function applyCore(editor: Editor, op: Op, seq: number): Promise<"custom" 
       return null;
     }
 
+    case "cursor": {
+      noteAgentSpot(op.x, op.y);
+      agentBus.moveTo(op.x, op.y, { label: op.label, instant: !animateCursor });
+      return null;
+    }
+
     case "focus": {
       let box: Box | null = null;
       if (op.ids?.length) box = boundsOf(editor, op.ids.map(sid));
       else if (op.box) box = new Box(op.box.x, op.box.y, op.box.w, op.box.h);
       if (box) zoomTo(editor, box, 1.5);
-      else editor.zoomToFit({ animation: { duration: FOCUS_MS } });
+      else fitAll(editor, { duration: FOCUS_MS });
       return null;
     }
 
     default:
       return "custom";
+  }
+}
+
+const DOING: Partial<Record<Op["type"], string>> = {
+  add_image: "adding a screenshot",
+  add_video: "adding a video",
+  add_shape: "sketching",
+  add_arrow: "connecting",
+  annotate: "marking this",
+  add_finding: "flagging",
+  say: "talking",
+  move: "moving",
+  update: "editing",
+  draw: "drawing",
+  arrow_to: "pointing",
+  highlight: "highlighting",
+  add_text: "writing",
+};
+
+/** Page point the agent avatar should glide to for an op (null = leave it where it is). */
+function agentSpot(editor: Editor, op: Op, seq: number, added: TLShapeId[]): { x: number; y: number; doing?: string } | null {
+  const doing = DOING[op.type];
+  switch (op.type) {
+    case "cursor":
+    case "focus":
+    case "clear":
+    case "delete":
+      return null;
+    case "add_arrow": {
+      const b = boundsOf(editor, [sid(op.from), sid(op.to)]);
+      return b ? { x: b.center.x, y: b.center.y, doing } : null;
+    }
+    case "say": {
+      const s = editor.getShape(sid(("id" in op && op.id) || `op${seq}`)) as unknown as { x: number; y: number; props: { tipX: number; tipY: number } } | undefined;
+      return s ? { x: s.x + s.props.tipX, y: s.y + s.props.tipY, doing } : null;
+    }
+    case "annotate": {
+      const b = boundsOf(editor, added.filter((i) => editor.getShape(i)?.type === "annotation"));
+      return b ? { x: b.x + b.w * 0.5, y: b.y + b.h * 0.5, doing } : null;
+    }
+    case "move":
+    case "update": {
+      const b = boundsOf(editor, [sid(op.id)]);
+      return b ? { x: b.x + 28, y: b.y + 28, doing } : null;
+    }
+    default: {
+      // the main shape of an add_* op = the one whose id matches the op key
+      const main = sid(opKey(op, seq));
+      const b = editor.getShapePageBounds(main) ?? boundsOf(editor, added);
+      return b ? { x: b.x + Math.min(40, b.w * 0.25), y: b.y + Math.min(40, b.h * 0.2), doing } : null;
+    }
   }
 }
 
@@ -350,7 +382,7 @@ export async function applyEnvelope(
       noFade = new Set((await pending).noFade);
     } else {
       let pending!: ReturnType<typeof applyCore>;
-      editor.run(() => { pending = applyCore(editor, op, env.seq); }, { ignoreShapeLock: true });
+      editor.run(() => { pending = applyCore(editor, op, env.seq, animate); }, { ignoreShapeLock: true });
       result = await pending;
     }
 
@@ -363,14 +395,15 @@ export async function applyEnvelope(
     }
 
     const added = [...editor.getCurrentPageShapeIds()].filter((i) => !before.has(i));
-    const fading = added.filter((i) => !noFade.has(i));
-    if (fading.length) {
-      if (animate) {
-        const rest = new Map(fading.map((i) => [i, editor.getShape(i)?.opacity ?? 1] as const));
-        setOpacity(editor, fading, 0);
-        fadeIn(editor, fading, rest);
-      }
+
+    // The agent's avatar glides to whatever it just touched; the element settles in as it arrives.
+    const spot = agentSpot(editor, op, env.seq, added);
+    if (spot) {
+      noteAgentSpot(spot.x, spot.y);
+      agentBus.moveTo(spot.x, spot.y, { instant: !animate, doing: spot.doing });
     }
+    const fading = added.filter((i) => !noFade.has(i));
+    if (fading.length && animate) animateIn(editor, fading, 160);
 
     if (follow && isMarkupOp(op)) {
       // marks land on a screenshot the human is already looking at: only pan if the mark is off-screen

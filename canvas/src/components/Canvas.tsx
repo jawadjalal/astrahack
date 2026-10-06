@@ -1,36 +1,44 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Tldraw, type Editor } from "tldraw";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Tldraw, useValue, type Editor, type TLUiComponents } from "tldraw";
 import "tldraw/tldraw.css";
 import { applyEnvelope } from "../lib/applyOp";
 import { withBase } from "../lib/base";
 import type { Envelope } from "../lib/ops";
+import { activity } from "../lib/activity";
+import { makeIguraTheme } from "../lib/ignuraTheme";
+import { fitAll } from "../lib/fit";
 import { customShapeUtils } from "./shapes";
+import { motion } from "./shapes/RoughBox";
+import { Toolbar } from "./ui/Toolbar";
+import { ActivityPanel } from "./ui/ActivityPanel";
+import { AgentAvatar } from "./ui/AgentAvatar";
+import { EmptyState } from "./ui/EmptyState";
+import { IguraStylePanel } from "./ui/IguraStylePanel";
 
 type Status = "connecting" | "connected" | "reconnecting";
 
-const pill: React.CSSProperties = {
-  background: "rgba(20,20,24,0.88)",
-  color: "#fff",
-  font: "500 12px/1 system-ui, sans-serif",
-  borderRadius: 999,
-  padding: "8px 12px",
-  display: "flex",
-  alignItems: "center",
-  gap: 8,
-  backdropFilter: "blur(6px)",
+// Replace tldraw's busy chrome. Shortcuts keep working; our own toolbar/panels live outside <Tldraw>.
+const components: TLUiComponents = {
+  Toolbar: null,
+  MainMenu: null,
+  PageMenu: null,
+  ActionsMenu: null,
+  HelpMenu: null,
+  ZoomMenu: null,
+  NavigationPanel: null,
+  Minimap: null,
+  QuickActions: null,
+  KeyboardShortcutsDialog: null,
+  HelperButtons: null,
+  DebugPanel: null,
+  DebugMenu: null,
+  MenuPanel: null,
+  TopPanel: null,
+  SharePanel: null,
+  StylePanel: IguraStylePanel,
 };
-
-const btn = (active?: boolean): React.CSSProperties => ({
-  background: active ? "#3b82f6" : "rgba(20,20,24,0.88)",
-  color: "#fff",
-  border: "1px solid rgba(255,255,255,0.12)",
-  font: "500 12px/1 system-ui, sans-serif",
-  borderRadius: 8,
-  padding: "8px 12px",
-  cursor: "pointer",
-});
 
 async function imageSize(url: string): Promise<{ w: number; h: number }> {
   return new Promise((resolve) => {
@@ -45,13 +53,16 @@ export default function Canvas() {
   const [editor, setEditor] = useState<Editor | null>(null);
   const [status, setStatus] = useState<Status>("connecting");
   const [opCount, setOpCount] = useState(0);
+  const [ready, setReady] = useState(false);
   const [follow, setFollow] = useState(true);
   const [present, setPresent] = useState(false);
   const followRef = useRef(true);
   followRef.current = follow;
+  const themes = useMemo(() => ({ default: makeIguraTheme() }), []);
 
   const handleMount = useCallback((ed: Editor) => {
     ed.user.updateUserPreferences({ colorScheme: "light" });
+    ed.updateInstanceState({ isGridMode: true }); // dotted paper
     (window as unknown as { __editor?: Editor }).__editor = ed; // debugging handle
     setEditor(ed);
   }, []);
@@ -64,8 +75,9 @@ export default function Canvas() {
     let retry: ReturnType<typeof setTimeout> | null = null;
     let lastSeq = 0;
     let seen = new Set<number>();
-    let bulk = true; // initial replay: no camera follow, no fade
+    let bulk = true; // initial replay: no camera follow, no animation
     let chain: Promise<void> = Promise.resolve();
+    activity.reset();
 
     const enqueue = (env: Envelope) => {
       if (seen.has(env.seq)) return;
@@ -77,6 +89,7 @@ export default function Canvas() {
       } else {
         lastSeq = Math.max(lastSeq, env.seq);
       }
+      activity.push(env);
       chain = chain
         .then(() =>
           applyEnvelope(editor, env, {
@@ -120,6 +133,8 @@ export default function Canvas() {
       if (disposed) return;
       await chain;
       bulk = false;
+      motion.enabled = true;
+      setReady(true);
       connect();
       // fit once the viewport is actually measured (a hidden/unsized tab reports 1x1 and
       // zoomToFit would pick a bogus zoom)
@@ -127,7 +142,7 @@ export default function Canvas() {
         await new Promise((r) => setTimeout(r, 50));
       }
       await new Promise((r) => setTimeout(r, 150));
-      if (!disposed && editor.getCurrentPageShapeIds().size) editor.zoomToFit({ immediate: true });
+      if (!disposed && editor.getCurrentPageShapeIds().size) fitAll(editor, { immediate: true });
     })();
 
     return () => {
@@ -140,7 +155,27 @@ export default function Canvas() {
   // ---- present mode ----
   useEffect(() => {
     editor?.updateInstanceState({ isReadonly: present });
+    if (present) editor?.selectNone();
   }, [editor, present]);
+
+  // ---- shortcuts: Shift+P present, Shift+F follow, Esc leaves present ----
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      if (e.key === "Escape" && present) return setPresent(false);
+      if (!e.shiftKey || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.code === "KeyP") {
+        e.preventDefault();
+        setPresent((p) => !p);
+      } else if (e.code === "KeyF") {
+        e.preventDefault();
+        setFollow((f) => !f);
+      }
+    };
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  }, [present]);
 
   // ---- drag & drop files -> /api/upload -> /api/ops ----
   const onDropCapture = useCallback(
@@ -184,55 +219,55 @@ export default function Canvas() {
   );
 
   const clearAll = async () => {
-    if (!confirm("Clear the whole canvas?")) return;
     await fetch(withBase("/api/state"), { method: "DELETE" });
   };
 
-  const fitAll = () => {
-    editor?.zoomToFit({ animation: { duration: 400 } });
-  };
-
-  const dot =
-    status === "connected" ? "#22c55e" : status === "reconnecting" ? "#f59e0b" : "#9ca3af";
+  const empty = useValue("ig-empty", () => !!editor && editor.getCurrentPageShapeIds().size === 0, [editor]);
 
   return (
     <div
+      className="ig-root"
+      data-present={present || undefined}
       style={{ position: "fixed", inset: 0 }}
       onDropCapture={onDropCapture}
       onDragOverCapture={(e) => {
         if (e.dataTransfer?.types.includes("Files")) e.preventDefault();
       }}
     >
-      <Tldraw
-        shapeUtils={customShapeUtils}
-        onMount={handleMount}
-        hideUi={present}
-      />
+      <Tldraw shapeUtils={customShapeUtils} themes={themes} components={components} onMount={handleMount} />
 
-      <div style={{ position: "absolute", top: 8, right: present ? 8 : 200, zIndex: 1000, ...pill }}>
-        <span style={{ width: 8, height: 8, borderRadius: 99, background: dot }} />
-        {status === "connected" ? "connected" : status === "reconnecting" ? "reconnecting" : "connecting"}
-        <span style={{ opacity: 0.6 }}>{opCount} ops</span>
+      {editor && (
+        <>
+          <AgentAvatar editor={editor} />
+          {ready && empty && <EmptyState />}
+          {!present && <ActivityPanel editor={editor} />}
+          {!present && (
+            <Toolbar
+              editor={editor}
+              follow={follow}
+              onFollow={() => setFollow((f) => !f)}
+              onPresent={() => setPresent(true)}
+              onClear={clearAll}
+            />
+          )}
+        </>
+      )}
+
+      <div className="ig-brand">
+        <img src={withBase("/ignura/iggy/iggy-mark.svg")} width={26} height={26} alt="" draggable={false} />
+        <span className="ig-brand-word">Ignura</span>
+        <span className={`ig-status is-${status}`} role="status">
+          <i />
+          {status === "connected" ? "live" : status === "reconnecting" ? "reconnecting" : "connecting"}
+          <small>{opCount} {opCount === 1 ? "op" : "ops"}</small>
+        </span>
       </div>
 
-      <div style={{ position: "absolute", left: 8, bottom: 64, zIndex: 1000, display: "flex", gap: 6 }}>
-        {!present && (
-          <>
-            <button style={btn()} onClick={clearAll}>
-              Clear
-            </button>
-            <button style={btn()} onClick={fitAll}>
-              Fit all
-            </button>
-            <button style={btn(follow)} onClick={() => setFollow((f) => !f)}>
-              Follow {follow ? "on" : "off"}
-            </button>
-          </>
-        )}
-        <button style={btn(present)} onClick={() => setPresent((p) => !p)}>
-          {present ? "Exit present" : "Present"}
+      {present && (
+        <button type="button" className="ig-exit" onClick={() => setPresent(false)}>
+          Exit client view <kbd>Esc</kbd>
         </button>
-      </div>
+      )}
     </div>
   );
 }

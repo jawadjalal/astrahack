@@ -47,6 +47,11 @@ export const OpSchema =z.discriminatedUnion("type", [
   z.object({ type: z.literal("focus"), ids: z.array(id).optional(), box: z.object({ x: z.number(), y: z.number(), w: z.number(), h: z.number() }).optional() }),
   z.object({ type: z.literal("clear") }),
   ...markupOps,
+  // Additive (agent presence): the agent's avatar glides to (x, y) in canvas pixels, with an optional name tag.
+  z.object({ type: z.literal("cursor"), x: z.number(), y: z.number(), label: z.string().max(40).optional() }),
+  // Additive: a speech bubble the agent leaves on the board. Pass `target` (an element id) to hang it beside that
+  // element, or x/y for an absolute spot. With neither it lands beside the agent's last cursor position.
+  z.object({ type: z.literal("say"), id: id.optional(), text: z.string().min(1).max(600), x: z.number().optional(), y: z.number().optional(), target: id.optional() }),
 ]);
 export type Op = z.infer<typeof OpSchema>;
 

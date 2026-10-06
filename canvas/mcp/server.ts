@@ -170,6 +170,7 @@ async function replay(): Promise<{ seq: number; els: Map<string, El> }> {
         }
         break;
       }
+      case "say": if (op.id) els.set(op.id, { id: op.id, type: "say", label: op.text, extra: { target: op.target }, seq: env.seq }); break;
       case "delete": els.delete(op.id); break;
       case "clear": els.clear(); break;
       default: break; // focus etc: no state
@@ -361,6 +362,36 @@ server.registerTool("canvas_focus", {
   return a.ids?.length ? `Focused on ${a.ids.join(", ")}.` : `Focused on box (${a.box!.x},${a.box!.y}) ${a.box!.w}x${a.box!.h}.`;
 }));
 
+server.registerTool("canvas_cursor", {
+  description:
+    "Move your avatar (an orange Ignura cursor with a name tag) to a spot on the board so the human can see where you are looking. It glides there. Adding or editing elements already moves it automatically, so use this to point at something you have NOT changed (e.g. 'checking this button next'), or to set the name tag with `label`. Canvas pixels, top-left origin.",
+  inputSchema: {
+    x: z.number().describe("Canvas x to glide to."),
+    y: z.number().describe("Canvas y to glide to."),
+    label: z.string().max(40).optional().describe("Name tag next to the cursor, e.g. 'Iggy' or 'QA agent'. Sticks until changed."),
+  },
+}, wrap(async (a) => {
+  await postOps(validate([{ type: "cursor", x: a.x, y: a.y, label: a.label }]));
+  return `Cursor moved to (${a.x},${a.y})${a.label ? ` as "${a.label}"` : ""}.`;
+}));
+
+server.registerTool("canvas_say", {
+  description:
+    "Leave a speech bubble (a caption in your own voice) on the board: a short remark, a question for the human, or context for a finding. It stays on the canvas, shows in screenshots/exports, and your cursor glides to it. Pass `target` (an element id) to hang it off that element's top-right corner, OR x/y for an absolute spot (the bubble's tail points at x,y). With neither it appears beside your last cursor position. Keep it to a sentence or two.",
+  inputSchema: {
+    text: z.string().min(1).max(600).describe("What you want to say. Plain text."),
+    target: idArg.optional().describe("Id of an existing element to attach the bubble to."),
+    x: z.number().optional().describe("Canvas x the bubble's tail points at (when no target)."),
+    y: z.number().optional().describe("Canvas y the bubble's tail points at (when no target)."),
+    id: OPTIONAL_ID,
+  },
+}, wrap(async (a) => {
+  const id = a.id ?? rid("say");
+  const [op] = validate([{ type: "say", id, text: a.text, target: a.target, x: a.x, y: a.y }]);
+  const r = await postOps([op]);
+  return `Said it (id=${r.ids[0] ?? id})${a.target ? ` next to ${a.target}` : a.x != null ? ` at (${a.x},${a.y})` : ""}.`;
+}));
+
 server.registerTool("canvas_clear", {
   description: "Delete EVERYTHING on the canvas and reset the log. Destructive; only use to start a fresh board.",
   inputSchema: {},
@@ -426,7 +457,7 @@ server.registerTool("canvas_layout_flow", {
 
 server.registerTool("canvas_batch", {
   description:
-    "Post several raw ops in one call (validated against the canvas op schema). Op shapes: add_image{id?,src,x,y,w?,h?,label?,step?} | add_video{id?,src,x,y,w?,h?,label?,autoplay?,seekTo?} | add_shape{id?,kind:rectangle|ellipse|line|text|note,x,y,w?,h?,text?,color?} | add_arrow{id?,from,to,label?,color?} | annotate{id?,target,box:{x,y,w,h in 0..1},label?,severity} | add_finding{id?,x,y,title,severity,expected?,actual?,verified?,target?,timestamp?} | update{id,props} | move{id,x,y} | delete{id} | focus{ids?|box?} | clear{}. Give your own ids to ops that later ops reference (e.g. arrows). Note add_image here takes an already-hosted src URL (use canvas_add_screenshot to upload local files). Ops apply in order.",
+    "Post several raw ops in one call (validated against the canvas op schema). Op shapes: add_image{id?,src,x,y,w?,h?,label?,step?} | add_video{id?,src,x,y,w?,h?,label?,autoplay?,seekTo?} | add_shape{id?,kind:rectangle|ellipse|line|text|note,x,y,w?,h?,text?,color?} | add_arrow{id?,from,to,label?,color?} | annotate{id?,target,box:{x,y,w,h in 0..1},label?,severity} | add_finding{id?,x,y,title,severity,expected?,actual?,verified?,target?,timestamp?} | update{id,props} | move{id,x,y} | delete{id} | focus{ids?|box?} | cursor{x,y,label?} | say{id?,text,target?|x?,y?} | clear{}. Give your own ids to ops that later ops reference (e.g. arrows). Note add_image here takes an already-hosted src URL (use canvas_add_screenshot to upload local files). Ops apply in order.",
   inputSchema: { ops: z.array(z.record(z.string(), z.unknown())).min(1).describe("Array of op objects, each with a `type`.") },
 }, wrap(async (a) => {
   const ops = validate(a.ops);
