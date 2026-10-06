@@ -25,7 +25,7 @@ Options:
   --max-minutes N          wall-clock limit (default 20)
   --canvas URL             canvas base URL incl. basePath (default $CANVAS_URL or http://localhost:3000)
   --dry-run                log actions, execute none (cdp: no browser; macos: no clicks/keys)
-  --mock                   use the scripted fake model
+  --mock                   use the scripted fake model (--mock-delay MS adds fake model latency, handy for steering demos)
   --model ID               default $ASTRA_MODEL or ${DEFAULT_MODEL}
   --effort LEVEL           reasoning effort: low|medium|high|xhigh|max (default $ASTRA_REASONING or low)
   --tool computer|function computer tool (default) or the equivalent function tool
@@ -52,7 +52,7 @@ export function parseCli(argv, env = process.env) {
     options: {
       app: { type: 'string' }, 'page-match': { type: 'string' }, brief: { type: 'string', default: '' }, backend: { type: 'string', default: 'cdp' },
       'max-steps': { type: 'string', default: '40' }, 'max-minutes': { type: 'string', default: '20' }, canvas: { type: 'string' },
-      'dry-run': { type: 'boolean', default: false }, mock: { type: 'boolean', default: false }, model: { type: 'string' }, effort: { type: 'string' },
+      'dry-run': { type: 'boolean', default: false }, mock: { type: 'boolean', default: false }, 'mock-delay': { type: 'string', default: '0' }, model: { type: 'string' }, effort: { type: 'string' },
       tool: { type: 'string', default: 'computer' }, verify: { type: 'boolean', default: true }, 'verify-steps': { type: 'string', default: '8' }, 'max-verify': { type: 'string', default: '6' },
       record: { type: 'boolean', default: true }, headed: { type: 'boolean', default: false }, chrome: { type: 'string' }, ffmpeg: { type: 'string' }, viewport: { type: 'string', default: '1440x900' },
       'allow-host': { type: 'string', multiple: true, default: [] }, 'allow-risky': { type: 'boolean', default: false }, 'mac-app': { type: 'string' },
@@ -77,7 +77,7 @@ export function parseCli(argv, env = process.env) {
   return {
     target, cdpPort: values.app ? int(values.app, 'app', 1, 65535) : null, pageMatch: values['page-match'],
     brief: values.brief, backend: values.backend, maxSteps: int(values['max-steps'], 'max-steps', 1, 500), maxMinutes: int(values['max-minutes'], 'max-minutes', 1, 480),
-    canvas: values.canvas || env.CANVAS_URL || 'http://localhost:3000', dryRun: values['dry-run'], mock: values.mock,
+    canvas: values.canvas || env.CANVAS_URL || 'http://localhost:3000', dryRun: values['dry-run'], mock: values.mock, mockDelay: int(values['mock-delay'], 'mock-delay', 0, 60000),
     model: values.model || env.ASTRA_MODEL || DEFAULT_MODEL, effort: values.effort || env.ASTRA_REASONING || 'low', tool: values.tool,
     verify: { enabled: values.verify, steps: int(values['verify-steps'], 'verify-steps', 1, 40), maxFindings: int(values['max-verify'], 'max-verify', 0, 50) },
     record: values.record, headed: values.headed, chrome: values.chrome || env.ASTRAHACK_CHROME, ffmpeg: values.ffmpeg || env.ASTRAHACK_FFMPEG,
@@ -136,7 +136,7 @@ export async function main(argv, env = process.env) {
   log(`steer file: ${join(outDir, 'steer.txt')}`);
 
   const sessionFactory = (kind, { instructions, functionTools }) => opts.mock
-    ? createMockSession(kind, { backend, log })
+    ? createMockSession(kind, { backend, log, delay: opts.mockDelay })
     : createAstraSession({ model: opts.model, instructions, functionTools, mode: opts.tool, effort: opts.effort, log });
 
   let report;

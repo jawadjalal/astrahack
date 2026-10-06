@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=22.9"
+    "node": ">=22.18"
   },
   "bin": {
     "astrahack": "./bin/astrahack.js",
@@ -12,14 +12,25 @@
     "astrahack-ugc": "./bin/ugc.js"
   },
   "scripts": {
-    "run": "node bin/astrahack.js",
-    "qa": "node bin/qa.js",
-    "capture-features": "node bin/feature-capture.js",
+    "setup": "npm install --prefix canvas",
+    "doctor": "node --env-file-if-exists=.env scripts/doctor.mjs",
+    "canvas": "npm run dev --prefix canvas",
+    "teardown": "node --env-file-if-exists=.env scripts/teardown.mjs",
+    "smoke:prod": "node scripts/smoke-prod.mjs",
+    "seed": "node canvas/scripts/seed-demo.mjs",
+    "push-run": "node canvas/scripts/push-run.mjs",
+    "run": "node --env-file-if-exists=.env bin/astrahack.js",
+    "agent": "node --env-file-if-exists=.env agent/run.mjs",
+    "agent:test": "node --test agent/test/*.test.mjs",
+    "qa": "node --env-file-if-exists=.env bin/qa.js",
+    "capture-features": "node --env-file-if-exists=.env bin/feature-capture.js",
     "generate": "node --env-file-if-exists=.env generate.mjs",
-    "test": "node --test test/*.test.js test/*.test.mjs agent/test/*.test.mjs",
-    "check": "node --check generate.mjs && node --check lib/generate.mjs && node --check campaigns.mjs && node --check lib/campaigns.mjs",
     "campaigns": "node --env-file-if-exists=.env campaigns.mjs",
+    "ugc": "node --env-file-if-exists=.env bin/ugc.js",
     "worker": "node bin/web-worker.js",
-    "ugc": "node --env-file-if-exists=.env bin/ugc.js"
+    "test": "node --test \"test/*.test.js\" \"test/*.test.mjs\" \"agent/test/*.test.mjs\" \"canvas/test/*.test.mjs\"",
+    "test:canvas": "npm run mcp:test --prefix canvas",
+    "test:all": "npm test && npm run test:canvas",
+    "check": "node scripts/check.mjs"
   }
 }

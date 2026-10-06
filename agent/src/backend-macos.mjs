@@ -21,8 +21,9 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const SCREEN_JXA = `ObjC.import('AppKit');
 const f = $.NSScreen.mainScreen.frame;
 JSON.stringify({width: f.size.width, height: f.size.height});`;
-const PREFLIGHT_JXA = `ObjC.import('CoreGraphics'); ObjC.import('ApplicationServices');
-JSON.stringify({screenRecording: $.CGPreflightScreenCaptureAccess(), accessibility: $.AXIsProcessTrusted()});`;
+// CGPreflightScreenCaptureAccess is not bridged into JXA, so Screen Recording is probed with a real capture instead.
+const PREFLIGHT_JXA = `ObjC.import('ApplicationServices');
+JSON.stringify({accessibility: $.AXIsProcessTrusted()});`;
 
 export async function hasCliclick() {
   try { await run('which', ['cliclick']); return true; } catch { return false; }
@@ -42,6 +43,11 @@ export class MacBackend {
   async preflight() {
     const out = { cliclick: await hasCliclick(), screenRecording: null, accessibility: null };
     try { Object.assign(out, JSON.parse(await this.jxa(PREFLIGHT_JXA))); } catch (error) { out.error = error.message; }
+    const dir = await mkdtemp(join(tmpdir(), 'astrahack-mac-'));
+    try {
+      await run('screencapture', ['-x', '-m', '-t', 'png', join(dir, 'probe.png')], { timeout: 15000 });
+      out.screenRecording = true;
+    } catch { out.screenRecording = false; } finally { await rm(dir, { recursive: true, force: true }); }
     return out;
   }
 
@@ -91,7 +97,10 @@ export class MacBackend {
         const buffer = await readFile(out);
         return { buffer, mime: 'image/jpeg', width: w, height: h, scale: w / (this.points?.width || w) };
       } catch (error) {
-        if (this.dryRun) { this.log(`macos: screenshot unavailable in dry-run (${error.message.split('\n')[0]}); using a placeholder image`); return { ...PLACEHOLDER_SHOT }; }
+        if (this.dryRun) {
+          if (!this.warnedPlaceholder) { this.warnedPlaceholder = true; this.log(`macos: screenshots unavailable in dry-run (${error.message.split('\n')[0]}); using a placeholder image`); }
+          return { ...PLACEHOLDER_SHOT };
+        }
         throw new Error(`screencapture failed: ${error.message.split('\n')[0]}. Check Screen Recording permission.`);
       }
     } finally { await rm(dir, { recursive: true, force: true }); }
@@ -107,7 +116,10 @@ export class MacBackend {
   async command(c) {
     this.stop?.check();
     if (c.sleep) { await sleep(this.dryRun ? 0 : c.sleep); return; }
-    const printable = c.tool === 'jxa' ? `osascript -l JavaScript <${c.script.length} char script>` : `${c.tool} ${c.args.map(a => (a.length > 80 ? a.slice(0, 77) + '...' : a)).join(' ')}`;
+    const flat = a => a.replace(/\s*\n\s*/g, ' ; ');
+    const printable = c.tool === 'jxa'
+      ? `osascript -l JavaScript <${c.script.length} char CGEvent script: ${c.script.includes('ScrollWheel') ? 'scroll' : 'mouse'}>`
+      : `${c.tool} ${c.args.map(a => flat(a.length > 90 ? a.slice(0, 87) + '...' : a)).join(' ')}`;
     if (this.dryRun) { this.executed.push(printable); this.log(`[dry-run] ${printable}`); return; }
     if (c.tool === 'jxa') await run('osascript', ['-l', 'JavaScript', '-e', c.script], { timeout: 15000 });
     else await run(c.tool, c.args, { timeout: 15000 });

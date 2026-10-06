@@ -72,7 +72,7 @@ export async function runTeardown({
     canvas.addStep({
       n: c.n, row: c.row, key: c.key, shot,
       label: c.n === 0 ? `${c.phase === 'verify' ? 'Replay start' : 'Cold open'}${st.title ? ' · ' + st.title : ''}` : (st.title || st.url || ''),
-      thought: c.thought, arrowLabel: c.arrowLabel, prev: c.prev, pointer: c.pointer, prevShot: c.prevShot
+      thought: c.thought, arrowLabel: c.arrowLabel, prev: c.prev, prevN: c.prevN, pointer: c.pointer, prevShot: c.prevShot
     });
     emit('step', { ...entry, size: { w: shot.width, h: shot.height } });
     log(`step ${c.phase === 'verify' ? c.findingId + ' ' : ''}${c.n}: ${c.actions?.length ? c.actions.join(', ') : 'initial view'}${c.errors?.length ? `  [! ${c.errors.join('; ')}]` : ''}`);
@@ -120,7 +120,7 @@ export async function runTeardown({
     await registerStep(shot, {
       phase: c.phase, findingId: c.findingId, row: c.row, key: c.keyFor(n), n, thought: c.thought,
       arrowLabel: short(described.join(', ') || 'look', 48), actions: described, errors,
-      prev: before.key, pointer, prevShot: before.shot
+      prev: before.key, prevN: before.n, pointer, prevShot: before.shot
     });
     return { callId: call.callId, imageDataUrl: dataUrl(shot), note: notes.join(' ') || undefined, executed, notes };
   };
@@ -340,7 +340,10 @@ export async function runTeardown({
   const lastN = state.counter ? Math.max(...report.steps.filter(s => s.phase === 'explore').map(s => s.n), 0) : 0;
   const videoPath = await recorder?.stop().catch(() => null);
   report.video = videoPath ? { path: relative(outDir, videoPath) } : null;
-  report.findings = findings.sorted();
+  if (inbox.pending) report.limitations.push(`${inbox.pending} steering message(s) arrived after exploration ended and were not applied.`);
+  // aliases (summary/evidence/evidenceStep/reproduction) match the field names the runner and QA agent reports use,
+  // so tools that read their report.json (src/findings-filter.js, teardown wrappers) can read this one too.
+  report.findings = findings.sorted().map(f => ({ ...f, summary: f.title, evidence: f.screenshot, evidenceStep: f.stepIndex, reproduction: f.repro }));
   report.rejectedFindings = findings.rejected;
   report.includeDesign = includeDesign;
   report.counts = findings.counts();
