@@ -56,6 +56,8 @@ HTML title and H1 checks on linked media files such as MP4s are excluded from th
 
 Candidates that are design opinions, speculation, or lack steps, expected vs actual or evidence are listed in `excludedFindings` (summary, category, reasons) and counted in `qa-analysis.md`; they never become findings.
 
+Initial missing-title or missing-H1 checks are superseded when a later successful observation from a completed worker records that element at the same URL. The report preserves the original check and exact counter-evidence IDs in `dismissedFindings`; superseded checks are removed from the findings. `reconcileCrawlEvidence()` applies this correction to a saved report without making another API request.
+
 ## Canvas handoff
 
 The shared canvas push script reads `qa-analysis.json` beside `qa-agent.json` or `crawl.json`. Inspect the generated operations without uploading or posting anything:

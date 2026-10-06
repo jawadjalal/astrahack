@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { analyzeQa, buildSchema, evidenceCatalog, systemPrompt } from '../src/qa-analysis.js';
+import { analyzeQa, buildSchema, evidenceCatalog, systemPrompt, reconcileCrawlEvidence } from '../src/qa-analysis.js';
 import { FUNCTIONAL_DEFINITION } from '../src/findings-filter.js';
 
 test('report prioritizes recorded failures and labels model ideas as hypotheses', async () => {
@@ -161,6 +161,24 @@ test('model hypothesis citing an existing crawler finding is not duplicated', as
 test('catalog discards traversal screenshot references', () => {
   const catalog = evidenceCatalog({ pages: [{ url: 'https://example.test', screenshot: '../secret.png' }] });
   assert.equal(catalog[0].screenshot, null);
+});
+
+test('later completed worker observations supersede transient missing-heading checks', () => {
+  const crawl = { pages: [{ url: 'https://example.test/work', visitedAt: '2026-10-06T10:00:00Z' }], findings: [
+    { type: 'missing_h1', url: 'https://example.test/work', actual: 'No visible H1 heading' }
+  ] };
+  const agent = { status: 'completed', workers: [{ id: 'A001', status: 'completed' }, { id: 'A002', status: 'error' }], steps: [
+    { index: 1, workerId: 'A001', status: 'passed', finishedAt: '2026-10-06T09:59:00Z', observation: { url: 'https://example.test/work', headings: [{ level: 'h1', text: 'Older heading' }] } },
+    { index: 2, workerId: 'A002', status: 'passed', finishedAt: '2026-10-06T10:01:00Z', observation: { url: 'https://example.test/work', headings: [{ level: 'h1', text: 'Incomplete worker' }] } },
+    { index: 3, workerId: 'A001', status: 'passed', finishedAt: '2026-10-06T10:02:00Z', observation: { url: 'https://example.test/work#main', headings: [{ level: 'h1', text: 'Work' }] } }
+  ] };
+  const report = { findings: [{ id: 'QA-001', evidenceRefs: ['CF001'], verification: 'recorded' }], evidence: evidenceCatalog(crawl, agent) };
+  const fixed = reconcileCrawlEvidence(report, crawl, agent);
+  assert.equal(fixed.findings.length, 0);
+  assert.deepEqual(fixed.dismissedFindings[0].counterEvidenceRefs, ['Q003']);
+  assert.equal(fixed.evidence.find(e => e.id === 'Q003').detail.headings[0].text, 'Work');
+  const inconclusive = reconcileCrawlEvidence(report, crawl, { ...agent, steps: agent.steps.slice(0, 2) });
+  assert.equal(inconclusive.findings.length, 1);
 });
 
 test('requires at least one evidence file', async () => {
