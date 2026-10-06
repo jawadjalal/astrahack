@@ -6,10 +6,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { run } from '../src/runner.js';
-import { findChrome } from '../src/chrome-path.js';
+import { findChromeForTests } from '../src/chrome-path.js';
 import { launchBrowser } from '../src/cdp.js';
 
-const chrome = findChrome() || '';
+const chrome = findChromeForTests() || '';
 
 test('website journey produces observations, evidence, and reproducible QA finding', { skip: !existsSync(chrome) }, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'astrahack-test-'));

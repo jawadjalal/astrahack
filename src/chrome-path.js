@@ -43,3 +43,8 @@ export function chromeCandidates(env = process.env, platform = process.platform,
 export function findChrome(env = process.env, platform = process.platform, home = homedir()) {
   return chromeCandidates(env, platform, home).find(p => existsSync(p)) || null;
 }
+
+// For the real-browser tests: ASTRAHACK_SKIP_BROWSER_TESTS=1 skips them (CI, a locked or asleep display, no GUI session).
+export function findChromeForTests(env = process.env) {
+  return env.ASTRAHACK_SKIP_BROWSER_TESTS ? null : findChrome(env);
+}
