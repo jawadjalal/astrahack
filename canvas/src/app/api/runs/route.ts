@@ -1,5 +1,7 @@
 import { CreateRunSchema } from "@/lib/runs";
+import { waitUntil } from "@vercel/functions";
 import { runs, RunError } from "@/server/runStore";
+import { dispatchCloudWorker } from "@/server/cloudWorker";
 import { readRunJson, requireWorker, requireWorkerConfigured, runClientHash, runFailure, runJson } from "@/server/runAuth";
 
 export const dynamic = "force-dynamic";
@@ -12,6 +14,7 @@ export async function POST(request: Request) {
     const parsed = CreateRunSchema.safeParse(await readRunJson(request));
     if (!parsed.success) throw new RunError(400, "invalid_request", "Provide a website URL in the url field.");
     const run = await runs.create(parsed.data.url, runClientHash(request));
+    waitUntil(dispatchCloudWorker(run.id));
     return runJson({ run }, 202);
   } catch (error) { return runFailure(error); }
 }
