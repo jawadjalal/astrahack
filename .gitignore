@@ -7,3 +7,4 @@ artifacts/
 sessions/
 runs/
 .vercel
+.claude/
