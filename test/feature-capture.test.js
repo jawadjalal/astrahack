@@ -69,7 +69,8 @@ test('honestly reports fleet gaps and supports a model override', async () => {
     assert.equal(manifest.coverage.screenshotsAvailable, 1);
     assert.equal(manifest.coverage.incompleteWorkers, 1);
     assert.deepEqual(manifest.features[0].reportedFeatureNames, ['Search']);
-    assert.ok(manifest.gaps.some(gap => gap.feature === 'Export' && gap.reason.includes('no selected screenshot')));
+    assert.ok(manifest.unmappedReportedFeatures.includes('Export'));
+    assert.equal(manifest.coverage.unmappedReportedFeatures, 1);
     assert.ok(manifest.gaps.some(gap => gap.reason.includes('Screenshot unavailable')));
     assert.ok(manifest.gaps.some(gap => gap.feature.includes('settings')));
     assert.ok(manifest.gaps.some(gap => gap.feature.includes('export') && gap.reason.includes('did not complete')));

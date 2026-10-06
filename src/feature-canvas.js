@@ -35,6 +35,7 @@ export async function publishFeatureCaptures(manifestPath, options = {}) {
   const directory = dirname(absoluteManifest);
   const manifest = JSON.parse(await readFile(absoluteManifest, 'utf8'));
   if (!Array.isArray(manifest.features) || !Array.isArray(manifest.gaps)) throw new Error('Invalid feature capture manifest');
+  const unmappedCount = manifest.unmappedReportedFeatures?.length || 0;
   const base = String(options.canvasUrl || process.env.CANVAS_URL || defaultCanvasUrl).replace(/\/+$/, '');
   const fetchImpl = options.fetchImpl || fetch;
   const runId = createHash('sha256').update(`${absoluteManifest}:${manifest.createdAt || ''}`).digest('hex').slice(0, 8);
@@ -86,15 +87,18 @@ export async function publishFeatureCaptures(manifestPath, options = {}) {
       label: String(entry.feature.name || 'Observed feature').slice(0, 120), step: position + 1
     });
   }
-  if (manifest.gaps.length) {
+  if (manifest.gaps.length || unmappedCount) {
     const y = originY + rowHeights.reduce((sum, value) => sum + value + gap, 0);
     const preview = manifest.gaps.slice(0, 8).map(gap => `• ${gap.feature}: ${gap.reason}`).join('\n');
-    const remainder = manifest.gaps.length > 8 ? `\n… and ${manifest.gaps.length - 8} more in manifest.json` : '';
+    const remainder = manifest.gaps.length > 8 ? `\n… and ${manifest.gaps.length - 8} more evidence gaps in manifest.json` : '';
     const id = `capture-${runId}-gaps`;
+    const noteText = `Screenshot coverage: observed screens only\n${manifest.gaps.length} evidence gap(s); ${unmappedCount} agent labels not mapped to selected screenshots (may overlap captured features)\n${preview}${remainder}`;
     ids.push(id);
-    if (!existing.has(id)) ops.push({ type: 'add_shape', id, kind: 'note', x: originX, y,
+    if (existing.has(id)) {
+      if (existing.get(id).text !== noteText) ops.push({ type: 'update', id, props: { text: noteText } });
+    } else ops.push({ type: 'add_shape', id, kind: 'note', x: originX, y,
       w: 1060, h: Math.min(700, 130 + Math.min(manifest.gaps.length, 8) * 62),
-      text: `Screenshot coverage: observed screens only\n${manifest.gaps.length} gap(s)\n${preview}${remainder}`, color: 'orange' });
+      text: noteText, color: 'orange' });
   }
   if (!ops.length) return { canvasUrl: base, imageCount: entries.length, gapCount: manifest.gaps.length, ids, postedCount: 0 };
   const posted = await canvasRequest(fetchImpl, base, '/api/ops', {

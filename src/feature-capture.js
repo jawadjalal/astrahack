@@ -152,7 +152,7 @@ export async function captureMajorFeatures(reportPath, options = {}) {
       failedPages: failedPages.length,
       incompleteWorkers: (report.jobs || report.workers || []).filter(worker => worker.status && worker.status !== 'completed').length
     },
-    features: [], gaps: []
+    features: [], gaps: [], unmappedReportedFeatures: []
   };
   for (const candidate of missingScreenshots) {
     manifest.gaps.push({ feature: candidate.title || candidate.url || 'Observed screen', reason: `Screenshot unavailable: ${candidate.path}` });
@@ -226,8 +226,9 @@ export async function captureMajorFeatures(reportPath, options = {}) {
     }
   }
   for (const name of report.reportedFeatures) {
-    if (!linkedReportedFeatures.has(name)) manifest.gaps.push({ feature: name, reason: 'QA agents reported this feature, but no selected screenshot was linked to it' });
+    if (!linkedReportedFeatures.has(name)) manifest.unmappedReportedFeatures.push(name);
   }
+  manifest.coverage.unmappedReportedFeatures = manifest.unmappedReportedFeatures.length;
   await mkdir(outputDir, { recursive: true });
   await writeFile(join(outputDir, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
   return { outputDir, manifest };
