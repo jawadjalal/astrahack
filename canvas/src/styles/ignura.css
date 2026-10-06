@@ -137,7 +137,6 @@
   box-shadow: 4px 5px 0 rgba(22, 22, 22, .85);
 }
 .ig-root .tlui-layout__top__right { margin-top: 64px; margin-right: 8px; }
-.ig-root .tlui-button__icon { color: var(--ink); }
 
 /* ------------------------------------------------------------------ chrome */
 .ig-root button { font: inherit; color: inherit; cursor: pointer; }

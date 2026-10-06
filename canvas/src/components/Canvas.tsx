@@ -147,7 +147,11 @@ export default function Canvas() {
   // ---- present mode ----
   useEffect(() => {
     editor?.updateInstanceState({ isReadonly: present });
-    if (present) editor?.selectNone();
+    if (present && editor) {
+      editor.selectNone();
+      // the chrome is gone: give the content the whole screen
+      setTimeout(() => fitAll(editor), 60);
+    }
   }, [editor, present]);
 
   // ---- shortcuts: Shift+P present, Shift+F follow, Esc leaves present ----

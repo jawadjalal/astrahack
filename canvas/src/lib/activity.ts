@@ -55,6 +55,23 @@ export function describeOp(env: Envelope): ActivityRow | null {
       names.set(id, op.title);
       return { ...base, kind: "finding", text: `Flagged ${op.severity}: ${clip(op.title)}`, ids: [id], severity: op.severity, verified: op.verified };
     }
+    case "draw":
+      return { ...base, kind: "shape", text: op.target ? `${op.style === "highlighter" ? "Highlighted" : "Drew"} on ${nameOf(op.target)}` : op.style === "highlighter" ? "Highlighted something" : "Sketched a mark", ids: [id] };
+    case "arrow_to": {
+      const ref = (e: typeof op.from) => (typeof e === "string" ? nameOf(e) : "target" in e ? nameOf(e.target) : "a spot");
+      names.set(id, op.label ?? "arrow");
+      const ids = [id, ...[op.from, op.to].filter((e): e is string => typeof e === "string")];
+      return { ...base, kind: "arrow", text: `Pointed from ${ref(op.from)} to ${ref(op.to)}${op.label ? ` (${clip(op.label, 30)})` : ""}`, ids };
+    }
+    case "highlight":
+      return { ...base, kind: "annotate", text: `Highlighted ${op.label ? `"${clip(op.label, 40)}"` : "a region"} on ${nameOf(op.target)}`, ids: [id] };
+    case "add_text":
+      names.set(id, clip(op.text, 40));
+      return { ...base, kind: "shape", text: `Wrote: ${clip(op.text, 56)}`, ids: [id] };
+    case "group":
+      return { ...base, kind: "edit", text: op.ungroup ? "Ungrouped elements" : `Grouped ${op.ids.length} elements${op.label ? ` as "${clip(op.label, 30)}"` : ""}`, ids: op.ids };
+    case "lock":
+      return { ...base, kind: "edit", text: op.locked ? `Locked ${op.ids.length} element${op.ids.length > 1 ? "s" : ""}` : `Unlocked ${op.ids.length} element${op.ids.length > 1 ? "s" : ""}`, ids: op.ids };
     case "say":
       return { ...base, kind: "say", text: `Said: "${clip(op.text, 70)}"`, ids: [id] };
     case "delete":
