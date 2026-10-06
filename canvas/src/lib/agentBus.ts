@@ -11,6 +11,8 @@ export type AgentCursor = {
   instant: boolean;
   /** short action blurb shown beside the name tag, e.g. "adding screenshot" */
   doing?: string;
+  /** this blurb is speech (an op `say`): quoted, held longer */
+  speech?: boolean;
 };
 
 type Listener = (c: AgentCursor | null) => void;
@@ -23,13 +25,14 @@ export const agentBus = {
   get(): AgentCursor | null {
     return current;
   },
-  moveTo(x: number, y: number, opts: { label?: string; instant?: boolean; doing?: string } = {}) {
+  moveTo(x: number, y: number, opts: { label?: string; instant?: boolean; doing?: string; speech?: boolean } = {}) {
     current = {
       x,
       y,
-      label: opts.label ?? current?.label ?? "Iggy",
+      label: opts.label ?? current?.label ?? "Astra",
       instant: !!opts.instant,
       doing: opts.doing,
+      speech: opts.speech,
       n: ++count,
     };
     for (const l of [...listeners]) l(current);

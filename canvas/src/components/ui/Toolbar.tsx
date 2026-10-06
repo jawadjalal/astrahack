@@ -18,7 +18,7 @@ import {
   IconTrash,
   IconUpload,
 } from "./icons";
-import { ACCEPT, addFiles, addUrl } from "./mediaActions";
+import { ACCEPT, ingestMedia, linkProblem } from "./mediaActions";
 import { fitAll } from "../../lib/fit";
 
 type Props = {
@@ -71,7 +71,6 @@ export function Toolbar({ editor, follow, onFollow, onPresent, onClear }: Props)
   const tool = useValue("tool", () => editor.getCurrentToolId(), [editor]);
   const [menu, setMenu] = useState<null | "add" | "clear">(null);
   const [link, setLink] = useState("");
-  const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const file = useRef<HTMLInputElement>(null);
   const root = useRef<HTMLDivElement>(null);
@@ -106,35 +105,23 @@ export function Toolbar({ editor, follow, onFollow, onPresent, onClear }: Props)
     return () => window.removeEventListener("keydown", key);
   }, []);
 
-  const pickFiles = async (list: FileList | null) => {
+  const pickFiles = (list: FileList | null) => {
     const files = Array.from(list ?? []);
+    if (file.current) file.current.value = "";
     if (!files.length) return;
-    setBusy(true);
-    setErr("");
-    try {
-      await addFiles(editor, files);
-      setMenu(null);
-    } catch (e) {
-      setErr((e as Error).message);
-    } finally {
-      setBusy(false);
-      if (file.current) file.current.value = "";
-    }
+    ingestMedia(editor, files);
+    setMenu(null);
   };
 
-  const submitLink = async () => {
-    if (!link.trim()) return;
-    setBusy(true);
+  const submitLink = () => {
+    const url = link.trim();
+    if (!url) return;
+    const problem = linkProblem(url);
+    if (problem) return setErr(problem);
+    ingestMedia(editor, [url]);
+    setLink("");
     setErr("");
-    try {
-      await addUrl(editor, link);
-      setLink("");
-      setMenu(null);
-    } catch (e) {
-      setErr((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
+    setMenu(null);
   };
 
   return (
@@ -142,7 +129,7 @@ export function Toolbar({ editor, follow, onFollow, onPresent, onClear }: Props)
       {menu === "add" && (
         <div className="ig-pop ig-pop-add" role="dialog" aria-label="Add to the board">
           <div className="ig-pop-title">Add to the board</div>
-          <button type="button" className="ig-pop-row" onClick={() => file.current?.click()} disabled={busy}>
+          <button type="button" className="ig-pop-row" onClick={() => file.current?.click()}>
             <IconUpload />
             <span>
               <b>Upload image or video</b>
@@ -162,11 +149,10 @@ export function Toolbar({ editor, follow, onFollow, onPresent, onClear }: Props)
                 if (e.key === "Enter") submitLink();
               }}
             />
-            <button type="button" className="ig-btn ig-btn-small" onClick={submitLink} disabled={busy || !link.trim()}>
+            <button type="button" className="ig-btn ig-btn-small" onClick={submitLink} disabled={!link.trim()}>
               Add
             </button>
           </div>
-          {busy && <div className="ig-pop-note">Adding…</div>}
           {err && <div className="ig-pop-note is-err">{err}</div>}
           <input ref={file} type="file" accept={ACCEPT} multiple hidden onChange={(e) => pickFiles(e.target.files)} />
         </div>

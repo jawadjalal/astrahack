@@ -87,7 +87,7 @@ All `add_*` tools accept an optional `id`. Pick your own ids when later calls re
 
 ## Agent presence: cursor and speech
 
-The canvas shows your agent as an orange Ignura cursor with a name tag (default "Iggy") that glides to every element you add, and an **Activity** panel on the left lists what you did in plain language ("Added screenshot: Signup", "Flagged high: Signup button does nothing"). Clicking a row zooms to that element. Two additive ops (raw JSON works with `POST /api/ops` and `canvas_batch` too):
+The canvas shows your agent as an orange Ignura cursor with a name tag (default "Astra") that glides to every element you add, and an **Activity** panel on the left lists what you did in plain language ("Added screenshot: Signup", "Flagged high: Signup button does nothing"). Clicking a row zooms to that element. Two additive ops (raw JSON works with `POST /api/ops` and `canvas_batch` too):
 
 ```json
 { "type": "cursor", "x": 560, "y": 120, "label": "QA agent" }

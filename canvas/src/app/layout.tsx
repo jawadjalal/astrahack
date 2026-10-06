@@ -6,7 +6,7 @@ import { withBase } from "../lib/base";
 export const metadata: Metadata = {
   title: "Astrahack Canvas",
   description: "A hand-drawn whiteboard your agent draws on, live.",
-  icons: { icon: withBase("/ignura/iggy/iggy-mark.svg") },
+  icons: { icon: withBase("/ignura/astra/astra-mark.svg") },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
