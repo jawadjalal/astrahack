@@ -131,8 +131,8 @@ test('fleet runs isolated agents in parallel and merges numbered evidence', asyn
     assert.equal(result.agent.model, 'gpt-6-luna');
     assert.equal(result.fleet.limits.maxAgents, null);
     assert.ok(result.fleet.limits.maxRequests == null);
-    assert.equal(result.fleet.limits.maxDurationMs, 300000);
-    assert.equal(result.fleet.limits.maxOutputTokens, 2048);
+    assert.equal(result.fleet.limits.maxDurationMs, 900000);
+    assert.equal(result.fleet.limits.maxOutputTokens, 8192);
     assert.equal(JSON.parse(await readFile(join(output, 'fleet.json'), 'utf8')).status, 'completed');
   } finally { await rm(output, { recursive: true, force: true }); }
 });
