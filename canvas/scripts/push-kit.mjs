@@ -12,6 +12,7 @@ import { readFile, stat, readdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createHash } from "node:crypto";
+import { boardApi, parseBoard } from "../src/lib/board.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -28,6 +29,7 @@ const USAGE = `usage: node canvas/scripts/push-kit.mjs [--ads <dir|manifest.json
                 even offline (with a live canvas the step ids are read from GET /api/state)
   --run-prefix  id prefix of the teardown (run-<12 hex>, as push-run scopes its ids). Default: found from --run, else the
                 latest teardown on the board
+  --board ID    board to publish to (default $CANVAS_BOARD, else main)
   --canvas URL  canvas base URL (default $CANVAS_URL or http://localhost:3000; base paths ok)
   --origin x,y  top-left of the kit in canvas px. Default: left edge of the existing content, 240px below its lowest element
   --live        post lane by lane with a pause so the canvas animates for a watcher (--delay ms overrides)
@@ -49,6 +51,7 @@ function parseArgs(argv) {
     else if (flag === "--run") a.run = next();
     else if (flag === "--run-prefix") a.runPrefix = next();
     else if (flag === "--canvas") a.canvas = next();
+    else if (flag === "--board") a.board = next();
     else if (flag === "--origin") a.origin = next();
     else if (flag === "--delay") a.delay = Number(next());
     else if (flag === "--live") a.live = true;
@@ -170,7 +173,9 @@ async function main() {
   const run = args.run ? await loadRun(args.run) : null;
 
   const base = (args.canvas || process.env.CANVAS_URL || "http://localhost:3000").replace(/\/+$/, "");
-  const api = (p) => `${base}/api${p}`;
+  const board = parseBoard(args.board || process.env.CANVAS_BOARD || undefined);
+  if (!board) throw new Error("--board must match ^[a-zA-Z0-9-]{1,64}$");
+  const api = boardApi(base, board);
 
   // ---- canvas state: where to put the kit, which step ids exist, what an earlier kit left behind
   let envelopes = null;

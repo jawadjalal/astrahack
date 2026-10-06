@@ -8,6 +8,7 @@ import { captureMajorFeatures } from './feature-capture.js';
 import { publishFeatureCaptures } from './feature-canvas.js';
 import { createResponse } from './openai.js';
 import { generateWebKit, publishWebKit } from './web-run-kit.js';
+import { boardForRun } from '../canvas/src/lib/board.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const exists = async path => { try { await access(path); return true; } catch { return false; } };
@@ -20,10 +21,10 @@ export function boundedFetch(signal, timeoutMs = 120_000, fetchImpl = fetch) {
 }
 
 /** The importer gets only fixed arguments and a validated run ID; no shell is involved. */
-export function pushRun(output, { canvasUrl, runId, signal } = {}) {
+export function pushRun(output, { canvasUrl, runId, board = boardForRun(runId), signal } = {}) {
   return new Promise((accept, reject) => {
     const child = spawn(process.execPath, [join(root, 'canvas/scripts/push-run.mjs'), output,
-      '--canvas', canvasUrl, '--run-id', runId], { cwd: root, stdio: 'ignore', signal });
+      '--canvas', canvasUrl, '--run-id', runId, '--board', board], { cwd: root, stdio: 'ignore', signal });
     const timer = setTimeout(() => child.kill('SIGTERM'), 180_000);
     child.once('error', error => { clearTimeout(timer); reject(error); });
     child.once('exit', code => {
@@ -86,20 +87,20 @@ export async function runWebPipeline(job, options = {}) {
     if (kitResult?.status !== 'complete') incomplete = true;
     failures.push(...(kitResult?.failures || []).map(name => `generating_${name}`));
     const result = await stage('publishing', 'Publishing QA evidence to the canvas.', async () => {
-      await publish(output, { canvasUrl, runId: job.id, signal });
+      await publish(output, { canvasUrl, runId: job.id, board: boardForRun(job.id), signal });
       return true;
     });
     published ||= Boolean(result);
     const manifestPath = join(captureResult?.outputDir || join(output, 'feature-captures'), 'manifest.json');
     if (await fileExists(manifestPath)) {
       const features = await stage('publishing_features', 'Publishing selected feature screenshots.', () => publishFeatures(manifestPath, {
-        canvasUrl, fetchImpl: boundedFetch(signal, 30_000),
+        canvasUrl, board: boardForRun(job.id), fetchImpl: boundedFetch(signal, 30_000),
       }));
       published ||= Boolean(features);
     }
     if (kitResult && [kitResult.ads, kitResult.campaigns, kitResult.ugc].some(Boolean)) {
       const kit = await stage('publishing_kit', 'Publishing ad images, campaign drafts, and UGC scripts.', () => publishKit(kitResult, {
-        output, canvasUrl, runId: job.id, signal,
+        output, canvasUrl, runId: job.id, board: boardForRun(job.id), signal,
       }));
       published ||= Boolean(kit);
     }

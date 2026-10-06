@@ -15,6 +15,7 @@ import { readFile, stat, readdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createHash } from "node:crypto";
+import { boardApi, parseBoard } from "../src/lib/board.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -35,6 +36,8 @@ function parseArgs(argv) {
     else if (t === "--layout") a.layout = argv[++i];
     else if (t === "--delay") a.delay = Number(argv[++i]);
     else if (t === "--run-id") a.runId = argv[++i];
+    else if (t === "--board") a.board = argv[++i];
+    else if (t.startsWith("--board=")) a.board = t.slice(8);
     else if (t === "--x") a.x = Number(argv[++i]);
     else if (t === "--y") a.y = Number(argv[++i]);
     else if (t === "-h" || t === "--help") a.help = true;
@@ -47,6 +50,7 @@ const USAGE = `usage: node canvas/scripts/push-run.mjs <runDir|report.json> [--c
   --canvas URL  canvas base URL (default $CANVAS_URL or http://localhost:3000; base paths ok)
   --live        ~400ms between steps so the canvas animates as a watcher sees it (--delay overrides)
   --clear       wipe the board first (DELETE /api/state)
+  --board ID    board to publish to (default $CANVAS_BOARD, else main). A run uses its run id: separate boards never collide
   --run-id ID   stable run identity (default report path + start time); prevents cross-run id collisions
   --x / --y N  placement origin; default appends below existing content
   --include-design  also draw usability/visual findings (always severity info). Default: functional findings only
@@ -96,7 +100,9 @@ async function main() {
   const analysis = (await exists(analysisPath)) ? JSON.parse(await readFile(analysisPath, "utf8")) : null;
 
   const base = (args.canvas || process.env.CANVAS_URL || "http://localhost:3000").replace(/\/+$/, "");
-  const api = (p) => `${base}/api${p}`;
+  const board = parseBoard(args.board || process.env.CANVAS_BOARD || undefined);
+  if (!board) throw new Error("--board must match ^[a-zA-Z0-9-]{1,64}$");
+  const api = boardApi(base, board);
     
   // ---- collect local media referenced by the bundle
   const rel = new Set();

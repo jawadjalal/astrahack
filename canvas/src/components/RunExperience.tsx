@@ -3,6 +3,8 @@
 import dynamic from "next/dynamic";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { withBase } from "../lib/base";
+import { boardForRun } from "../lib/board.mjs";
+import { boardFromLocation } from "../lib/boardClient";
 import type { Run } from "../lib/runs";
 import RunStepper, { LAST_STEP, MiniSteps, RUN_STEPS, stepIndex } from "./RunStepper";
 import { RoughDefs } from "./ui/RoughDefs";
@@ -58,6 +60,9 @@ export default function RunExperience({ initialRunId = null, initialCanvas = fal
   const [targetUrl, setTargetUrl] = useState("");
   const [run, setRun] = useState<Run | null>(null);
   const [runId, setRunId] = useState<string | null>(initialRunId);
+  // a run draws on its own board (named after the run id); `?board=<id>` opens any other board; no param means `main`
+  const [urlBoard] = useState(() => boardFromLocation());
+  const board = runId ? boardForRun(runId) : urlBoard;
   const [showCanvas, setShowCanvas] = useState(!!initialRunId || initialCanvas);
   const [showForm, setShowForm] = useState(!initialRunId && !initialCanvas);
   const [submitting, setSubmitting] = useState(false);
@@ -183,7 +188,7 @@ export default function RunExperience({ initialRunId = null, initialCanvas = fal
   return (
     <>
       <RoughDefs />
-      {showCanvas && <Canvas />}
+      {showCanvas && <Canvas key={board} board={board} />}
 
       {showForm && (
         <main className={`${styles.stage} ${styles.paper} ${showCanvas ? styles.overlay : ""}`}>

@@ -55,11 +55,15 @@ export const OpSchema =z.discriminatedUnion("type", [
 ]);
 export type Op = z.infer<typeof OpSchema>;
 
-export const EnvelopeSchema = z.object({ seq: z.number().int(), ts: z.number(), op: OpSchema });
+// `src` = id of the browser tab that posted a human edit (never set for agents). A tab skips envelopes carrying its own
+// `src`: its edits are already on screen, and re-applying an echo would snap back anything it moved since.
+export const EnvelopeSchema = z.object({ seq: z.number().int(), ts: z.number(), op: OpSchema, src: z.string().optional() });
 export type Envelope = z.infer<typeof EnvelopeSchema>;
 
-// HTTP API (owned by the server workstream)
-//   POST   /api/ops      body: Op | Op[]          -> { ok, seqs:number[] }  (assigns missing ids, returns them in `ids`)
+// HTTP API (owned by the server workstream). Every route takes `?board=<id>` (^[a-zA-Z0-9-]{1,64}$, default `main`):
+// one independent op log per board; a run publishes to the board named after its run id.
+// `?client=<tabId>` on POST /api/ops stamps the envelopes' `src` (human edits made in the canvas).
+//   POST   /api/ops     body: Op | Op[]          -> { ok, seqs:number[] }  (assigns missing ids, returns them in `ids`)
 //   GET    /api/state                              -> { seq, ops: Envelope[] }
 //   GET    /api/events?since=N                     -> SSE of Envelope (replays > since, then live)
 //   POST   /api/upload   multipart `file`          -> { url }  (served from /uploads/*)

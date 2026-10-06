@@ -1,5 +1,6 @@
 import { list, subscribe } from "@/server/store";
 import { CORS_HEADERS, preflight } from "@/server/cors";
+import { boardParams } from "@/server/boardParam";
 import type { Envelope } from "@/lib/ops";
 
 export const dynamic = "force-dynamic";
@@ -9,6 +10,9 @@ export const maxDuration = 300;
 export const OPTIONS = preflight;
 
 export async function GET(req: Request) {
+  const bp = boardParams(req);
+  if ("error" in bp) return bp.error;
+  const board = bp.board;
   const url = new URL(req.url);
   const since = Number(url.searchParams.get("since") ?? 0) || 0;
   const enc = new TextEncoder();
@@ -37,9 +41,9 @@ export async function GET(req: Request) {
           lastSeq = e.seq;
           sendEnv(e);
         }
-      });
+      }, board);
       send(": connected\n\n");
-      for (const e of await list(since)) {
+      for (const e of await list(since, board)) {
         lastSeq = Math.max(lastSeq, e.seq);
         sendEnv(e);
       }

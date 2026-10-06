@@ -11,6 +11,9 @@
 //                  Base-path aware: https://ignura.com/astrahack works (API = URL + /api/...).
 //   --live         post one op at a time with ~500ms delays so the canvas builds visibly.
 //   --no-clear     do not wipe the board first.
+//   --board ID     draw on this board (default $CANVAS_BOARD, else main).
+//   --force-prod   allow writing to board `main` on a non-localhost canvas. Without it the script REFUSES: sample data
+//                  must not land on the shared production board. Every sample board carries a "Sample (not a real run)" label.
 //   --dry-run      print the ops as JSON, post nothing.
 //
 // The mock client app ("Fernly", a plant-care app) is drawn here as SVG data URLs, so no
@@ -23,14 +26,17 @@ const opt = (n) => {
   return i >= 0 ? args[i + 1] : undefined;
 };
 if (flag("help") || flag("h")) {
-  console.log("usage: node scripts/seed-demo.mjs [--canvas URL] [--live] [--no-clear] [--dry-run]");
+  console.log("usage: node scripts/seed-demo.mjs [--canvas URL] [--live] [--no-clear] [--dry-run] [--board ID] [--force-prod]");
   process.exit(0);
 }
 
 import { assessFinding } from "../src/lib/findings-filter.mjs";
+import { assertSampleWriteAllowed, boardApi, parseBoard, SAMPLE_LABEL } from "../src/lib/board.mjs";
 import { DEMO_FINDINGS } from "./demo-findings.mjs";
 
 const CANVAS_URL = (opt("canvas") || process.env.CANVAS_URL || "http://localhost:3000").replace(/\/+$/, "");
+const BOARD = parseBoard(opt("board") || process.env.CANVAS_BOARD || undefined);
+if (!BOARD) { console.error("--board must match ^[a-zA-Z0-9-]{1,64}$"); process.exit(2); }
 const LIVE = flag("live");
 const DELAY_MS = 500;
 const VIDEO_URL = "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4";
@@ -309,6 +315,7 @@ const ops = [];
 const add = (op, group) => ops.push({ op, group });
 
 // 1. title + legend
+add({ type: "add_shape", id: "sample-label", kind: "text", x: 0, y: -720, text: SAMPLE_LABEL, color: "red" });
 add({ type: "add_shape", id: "title", kind: "text", x: 0, y: -640, text: "Fernly teardown: install to first plant" });
 add({ type: "update", id: "title", props: { size: "xl" } });
 add({ type: "add_shape", id: "subtitle", kind: "text", x: 0, y: -552, text: "iOS, test account. Observed, reproduced, explained, ranked." });
@@ -361,7 +368,7 @@ add({ type: "focus" });
 // ---------------------------------------------------------------------------------------
 // Post
 // ---------------------------------------------------------------------------------------
-const api = (p) => `${CANVAS_URL}${p}`;
+const api = (p) => boardApi(CANVAS_URL, BOARD)(p.replace(/^\/api/, ""));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function post(body) {
@@ -386,7 +393,8 @@ async function main() {
     console.log(JSON.stringify(ops.map((o) => o.op), null, 2));
     return;
   }
-  console.log(`Seeding ${CANVAS_URL} (${ops.length} ops${LIVE ? ", live" : ""})`);
+  try { assertSampleWriteAllowed({ board: BOARD, canvasUrl: CANVAS_URL, forceProd: flag("force-prod"), what: "the Fernly demo board" }); } catch (e) { console.error(`seed-demo: ${e.message}`); process.exit(1); }
+  console.log(`Seeding ${CANVAS_URL} board=${BOARD} (${ops.length} ops${LIVE ? ", live" : ""})`);
   if (!flag("no-clear")) await post({ type: "clear" });
   if (!LIVE) {
     await post(ops.map((o) => o.op));

@@ -1,5 +1,6 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
+import { boardApi } from '../canvas/src/lib/board.mjs';
 import { createRequire } from 'node:module';
 import { dirname, join, resolve, relative, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -106,13 +107,13 @@ export function namespaceKitOps(ops, runId) {
 }
 
 /** Uses the same renderer and upload contract as canvas/scripts/push-kit.mjs, with per-run IDs. */
-export async function publishWebKit(kit, { output, canvasUrl, runId, signal, fetchImpl = fetch } = {}) {
+export async function publishWebKit(kit, { output, canvasUrl, runId, board, signal, fetchImpl = fetch } = {}) {
   const layout = await import('../canvas/src/lib/kitToOps.ts');
   const { OpSchema } = await import('../canvas/src/lib/ops.ts');
   const request = bounded(signal, fetchImpl);
   const base = canvasUrl.replace(/\/+$/, '');
   const call = async (path, init) => {
-    const response = await request(`${base}/api${path}`, init);
+    const response = await request(boardApi(base, board)(path), init);
     if (!response.ok) throw new Error(`Canvas request failed (HTTP ${response.status}).`);
     return response.json();
   };

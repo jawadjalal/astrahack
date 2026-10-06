@@ -4,6 +4,7 @@ import path from "node:path";
 import { put } from "@vercel/blob";
 import { useBlob } from "@/server/store";
 import { json, preflight } from "@/server/cors";
+import { boardParams } from "@/server/boardParam";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -14,6 +15,9 @@ const MAX_BYTES = 200 * 1024 * 1024;
 const EXT_OK = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".avif", ".svg", ".bmp", ".mp4", ".webm", ".mov", ".m4v"]);
 
 export async function POST(req: Request) {
+  // uploads are content-addressed by name, not per board; the board is only validated so a bad id fails loudly
+  const bp = boardParams(req);
+  if ("error" in bp) return bp.error;
   let form: FormData;
   try {
     form = await req.formData();

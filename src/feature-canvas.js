@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { basename, dirname, relative, resolve, sep } from 'node:path';
+import { boardApi } from '../canvas/src/lib/board.mjs';
 
 const defaultCanvasUrl = 'http://localhost:3000';
 
@@ -20,9 +21,9 @@ function pngSize(bytes) {
   return { width, height };
 }
 
-async function canvasRequest(fetchImpl, base, path, init) {
+async function canvasRequest(fetchImpl, base, path, init, board) {
   let response;
-  try { response = await fetchImpl(`${base}${path}`, init); }
+  try { response = await fetchImpl(boardApi(base, board)(path.replace(/^\/api/, '')), init); }
   catch (error) { throw new Error(`Cannot reach canvas at ${base}: ${error.message}`); }
   const body = await response.json().catch(() => ({}));
   if (!response.ok || body.ok === false) throw new Error(`Canvas ${path} returned HTTP ${response.status}: ${body.error || 'unknown error'}`);
@@ -40,7 +41,7 @@ export async function publishFeatureCaptures(manifestPath, options = {}) {
   const base = String(options.canvasUrl || process.env.CANVAS_URL || defaultCanvasUrl).replace(/\/+$/, '');
   const fetchImpl = options.fetchImpl || fetch;
   const runId = createHash('sha256').update(`${absoluteManifest}:${manifest.createdAt || ''}`).digest('hex').slice(0, 8);
-  const state = await canvasRequest(fetchImpl, base, '/api/state');
+  const state = await canvasRequest(fetchImpl, base, '/api/state', undefined, options.board);
   const existing = new Map();
   for (const envelope of state.ops || []) {
     const op = envelope.op || {};
@@ -80,7 +81,7 @@ export async function publishFeatureCaptures(manifestPath, options = {}) {
     const form = new FormData();
     const filename = basename(path).replace(/[^a-zA-Z0-9._-]+/g, '_').slice(0, 60) || 'capture.png';
     form.append('file', new Blob([bytes], { type: 'image/png' }), filename);
-    const uploaded = await canvasRequest(fetchImpl, base, '/api/upload', { method: 'POST', body: form });
+    const uploaded = await canvasRequest(fetchImpl, base, '/api/upload', { method: 'POST', body: form }, options.board);
     if (typeof uploaded.url !== 'string' || !uploaded.url) throw new Error('Canvas upload returned no URL');
     ops.push({
       type: 'add_image', id,
@@ -109,7 +110,7 @@ export async function publishFeatureCaptures(manifestPath, options = {}) {
   if (!ops.length) return { canvasUrl: base, ...counts, ids, postedCount: 0 };
   const posted = await canvasRequest(fetchImpl, base, '/api/ops', {
     method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(ops)
-  });
+  }, options.board);
   if (!Array.isArray(posted.ids) || posted.ids.length !== ops.length) throw new Error('Canvas did not acknowledge every operation');
   return { canvasUrl: base, ...counts, ids, postedCount: ops.length };
 }

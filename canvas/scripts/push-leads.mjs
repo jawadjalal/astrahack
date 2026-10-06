@@ -12,6 +12,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { boardApi, parseBoard } from "../src/lib/board.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -27,6 +28,8 @@ function parseArgs(argv) {
     else if (t.startsWith("--leads=")) a.leads = t.slice(8);
     else if (t === "--canvas") a.canvas = argv[++i];
     else if (t.startsWith("--canvas=")) a.canvas = t.slice(9);
+    else if (t === "--board") a.board = argv[++i];
+    else if (t.startsWith("--board=")) a.board = t.slice(8);
     else if (t === "--live") a.live = true;
     else if (t === "--replace") a.replace = true;
     else if (t === "--dry-run") a.dry = true;
@@ -39,6 +42,7 @@ function parseArgs(argv) {
 
 const USAGE = `usage: node canvas/scripts/push-leads.mjs [--leads leads.json] [--canvas URL] [--live] [--replace] [--dry-run] [--delay ms]
   --leads PATH  leads.json from \`npm run leads\` (default ./leads.json)
+  --board ID    board to publish to (default $CANVAS_BOARD, else main)
   --canvas URL  canvas base URL (default $CANVAS_URL or http://localhost:3000; base paths ok)
   --live        ~400ms between cards so the lane builds in front of a watcher (--delay overrides)
   --replace     remove an earlier Leads lane first, then redraw below the remaining content
@@ -62,7 +66,9 @@ async function main() {
   if (doc.kind !== "astrahack.leads") throw new Error(`${args.leads} is not a leads.json (kind ${JSON.stringify(doc.kind)})`);
 
   const base = (args.canvas || process.env.CANVAS_URL || "http://localhost:3000").replace(/\/+$/, "");
-  const api = (p) => `${base}/api${p}`;
+  const board = parseBoard(args.board || process.env.CANVAS_BOARD || undefined);
+  if (!board) throw new Error("--board must match ^[a-zA-Z0-9-]{1,64}$");
+  const api = boardApi(base, board);
 
   let envelopes = [];
   try {

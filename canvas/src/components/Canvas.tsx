@@ -5,6 +5,7 @@ import { Tldraw, useValue, type Editor, type TLUiComponents } from "tldraw";
 import "tldraw/tldraw.css";
 import { applyEnvelope } from "../lib/applyOp";
 import { withBase } from "../lib/base";
+import { boardFromLocation, boardLabel, boardShareUrl, boardUrl, setActiveBoard } from "../lib/boardClient";
 import type { Envelope } from "../lib/ops";
 import { activity } from "../lib/activity";
 import { makeIguraTheme } from "../lib/ignuraTheme";
@@ -44,7 +45,9 @@ const components: TLUiComponents = {
   StylePanel: IguraStylePanel,
 };
 
-export default function Canvas() {
+export default function Canvas({ board: boardProp }: { board?: string } = {}) {
+  const board = useMemo(() => boardProp ?? boardFromLocation(), [boardProp]);
+  setActiveBoard(board);
   const [editor, setEditor] = useState<Editor | null>(null);
   const [status, setStatus] = useState<Status>("connecting");
   const [opCount, setOpCount] = useState(0);
@@ -98,7 +101,7 @@ export default function Canvas() {
 
     const connect = () => {
       if (disposed) return;
-      es = new EventSource(withBase(`/api/events?since=${lastSeq}`));
+      es = new EventSource(boardUrl(`/api/events?since=${lastSeq}`, board));
       es.onopen = () => setStatus("connected");
       es.onmessage = (m) => {
         try {
@@ -118,7 +121,7 @@ export default function Canvas() {
 
     (async () => {
       try {
-        const res = await fetch(withBase("/api/state"), { cache: "no-store" });
+        const res = await fetch(boardUrl("/api/state", board), { cache: "no-store" });
         const state = (await res.json()) as { seq: number; ops: Envelope[] };
         for (const env of state.ops) enqueue(env);
         lastSeq = Math.max(lastSeq, state.seq ?? 0);
@@ -145,7 +148,7 @@ export default function Canvas() {
       es?.close();
       if (retry) clearTimeout(retry);
     };
-  }, [editor]);
+  }, [editor, board]);
 
   // ---- present mode ----
   useEffect(() => {
@@ -180,7 +183,8 @@ export default function Canvas() {
   useMediaIntake(editor);
 
   const clearAll = async () => {
-    await fetch(withBase("/api/state"), { method: "DELETE" });
+    // resets THIS board only, for everyone watching it
+    await fetch(boardUrl("/api/state", board), { method: "DELETE" });
   };
 
   const empty = useValue("ig-empty", () => !!editor && editor.getCurrentPageShapeIds().size === 0, [editor]);
@@ -197,7 +201,7 @@ export default function Canvas() {
       {editor && (
         <>
           <AgentAvatar editor={editor} />
-          {ready && empty && <EmptyState />}
+          {ready && empty && <EmptyState board={board} />}
           {!present && <ActivityPanel editor={editor} />}
           {!present && (
             <Toolbar
@@ -219,6 +223,15 @@ export default function Canvas() {
           {status === "connected" ? "live" : status === "reconnecting" ? "reconnecting" : "connecting"}
           <small>{opCount} {opCount === 1 ? "op" : "ops"}</small>
         </span>
+        <button
+          type="button"
+          className="ig-board"
+          title={`Board: ${board}. Click to copy a link to exactly this board.`}
+          onClick={() => void navigator.clipboard?.writeText(boardShareUrl(board))}
+          style={{ font: "inherit", fontSize: 12, opacity: 0.7, background: "none", border: 0, cursor: "pointer", padding: "0 4px" }}
+        >
+          {boardLabel(board)}
+        </button>
       </div>
 
       {present && (

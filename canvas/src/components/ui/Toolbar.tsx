@@ -158,9 +158,9 @@ export function Toolbar({ editor, follow, onFollow, onPresent, onClear }: Props)
         </div>
       )}
       {menu === "clear" && (
-        <div className="ig-pop ig-pop-clear" role="alertdialog" aria-label="Clear the board">
-          <div className="ig-pop-title">Clear the whole board?</div>
-          <p className="ig-pop-p">Everything your agent drew goes away for everyone watching.</p>
+        <div className="ig-pop ig-pop-clear" role="alertdialog" aria-label="Reset the board">
+          <div className="ig-pop-title">Reset this board?</div>
+          <p className="ig-pop-p">Everything on this board goes away for everyone watching it. Other boards are untouched.</p>
           <div className="ig-pop-actions">
             <button type="button" className="ig-btn ig-btn-ghost" onClick={() => setMenu(null)}>
               Keep it
@@ -173,7 +173,7 @@ export function Toolbar({ editor, follow, onFollow, onPresent, onClear }: Props)
                 onClear();
               }}
             >
-              Clear it
+              Reset board
             </button>
           </div>
         </div>
@@ -207,7 +207,7 @@ export function Toolbar({ editor, follow, onFollow, onPresent, onClear }: Props)
         <Btn label="Fit everything" hint="Shift+1" onClick={() => fitAll(editor)}>
           <IconFit />
         </Btn>
-        <Btn label="Clear the board" active={menu === "clear"} onClick={() => setMenu(menu === "clear" ? null : "clear")} className="ig-tool-danger">
+        <Btn label="Reset board" active={menu === "clear"} onClick={() => setMenu(menu === "clear" ? null : "clear")} className="ig-tool-danger">
           <IconTrash />
         </Btn>
       </div>

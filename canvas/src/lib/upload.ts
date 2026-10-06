@@ -2,6 +2,7 @@
 // Pure helpers (classifyMedia, chooseStrategy, fitSize, layoutRow) are exported so they can be unit tested
 // in node (`npx tsx --test src/lib/upload.test.ts`); everything browser-only is behind function calls.
 import { withBase } from "./base";
+import { boardUrl } from "./boardClient";
 
 export type MediaKind = "image" | "video";
 export type UploadResult = {
@@ -222,7 +223,7 @@ function randomName(file: { name: string }): string {
 function multipartUpload(file: File, opts: UploadOptions): Promise<string> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open("POST", withBase("/api/upload"));
+    xhr.open("POST", boardUrl("/api/upload"));
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable) {
         opts.onProgress?.({ loaded: e.loaded, total: e.total, percentage: (e.loaded / e.total) * 100 });
@@ -311,7 +312,7 @@ export function labelFor(input: MediaInput): string {
 }
 
 async function postOps(ops: Record<string, unknown>[]): Promise<{ ids?: string[] }> {
-  const res = await fetch(withBase("/api/ops"), {
+  const res = await fetch(boardUrl("/api/ops"), {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(ops.length === 1 ? ops[0] : ops),

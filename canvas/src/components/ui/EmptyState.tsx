@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { withBase } from "../../lib/base";
+import { withBoard } from "../../lib/board.mjs";
 import { IconCopy } from "./icons";
 
 function Copy({ text, label }: { text: string; label: string }) {
@@ -24,9 +25,9 @@ function Copy({ text, label }: { text: string; label: string }) {
 }
 
 /** Shown while the board has nothing on it. Pointer events pass through except on the copy chips. */
-export function EmptyState() {
+export function EmptyState({ board }: { board?: string } = {}) {
   const origin = typeof window === "undefined" ? "" : window.location.origin;
-  const endpoint = `${origin}${withBase("/api/ops")}`;
+  const endpoint = `${origin}${withBoard(withBase("/api/ops"), board)}`;
   const curl = `curl -X POST ${endpoint} -H 'content-type: application/json' -d '{"type":"add_shape","kind":"note","x":0,"y":0,"text":"hello from my agent"}'`;
   return (
     <div className="ig-empty">

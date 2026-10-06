@@ -16,6 +16,7 @@ import { spawn } from 'node:child_process';
 import { basename, join, resolve } from 'node:path';
 import { LOCAL_URL, ROOT, errText, ffmpegPath, loadEnv, parseFlags, probeCanvas, sleep, trimUrl } from './lib/common.mjs';
 import { findChrome } from '../src/chrome-path.js';
+import { DEFAULT_BOARD, assertSampleWriteAllowed, parseBoard } from '../canvas/src/lib/board.mjs';
 
 loadEnv();
 
@@ -37,6 +38,8 @@ const USAGE = `usage: npm run teardown -- <url> [options]
   --headed           show the browser
   --out DIR          run directory (default runs/teardown-<host>-<time>)
   --open             open the board in your browser at the end
+  --board ID         draw on this board (default $CANVAS_BOARD, else main)
+  --force-prod       allow --mock sample data on board main of a non-localhost canvas (refused otherwise)
   --no-start         never start a local canvas; fail if it is down
   --no-install       never run npm install in canvas/
   --dry-run          print what would run, change nothing`;
@@ -44,7 +47,7 @@ const USAGE = `usage: npm run teardown -- <url> [options]
 let flags;
 try {
   flags = parseFlags(process.argv.slice(2), {
-    canvas: { type: 'string' }, live: { type: 'boolean' }, 'no-clear': { type: 'boolean' }, clear: { type: 'boolean' }, kit: { type: 'boolean' }, 'no-kit': { type: 'boolean' },
+    canvas: { type: 'string' }, board: { type: 'string' }, 'force-prod': { type: 'boolean' }, live: { type: 'boolean' }, 'no-clear': { type: 'boolean' }, clear: { type: 'boolean' }, kit: { type: 'boolean' }, 'no-kit': { type: 'boolean' },
     mock: { type: 'boolean' }, fixture: { type: 'string', default: 'ignura' }, replay: { type: 'string' }, agent: { type: 'string', default: 'auto' },
     brief: { type: 'string', default: '' }, paths: { type: 'string', default: '' }, config: { type: 'string' }, headed: { type: 'boolean' },
     'max-minutes': { type: 'number', default: 10 }, out: { type: 'string' }, open: { type: 'boolean' }, 'no-start': { type: 'boolean' },
@@ -59,6 +62,9 @@ if (!mode) { console.error(`Give a <url>, --mock, or --replay <runDir>.\n\n${USA
 if (!['fernly', 'ignura'].includes(flags.fixture)) { console.error('--fixture must be fernly or ignura'); process.exit(2); }
 if (!['auto', 'astra', 'runner', 'custom'].includes(flags.agent)) { console.error('--agent must be auto, astra, runner or custom'); process.exit(2); }
 
+const BOARD = parseBoard(flags.board || process.env.CANVAS_BOARD || undefined);
+if (!BOARD) { console.error('--board must match ^[a-zA-Z0-9-]{1,64}$'); process.exit(2); }
+const boardArgs = () => (BOARD === DEFAULT_BOARD ? [] : ['--board', BOARD]);
 let CANVAS = trimUrl(flags.canvas || process.env.CANVAS_URL || LOCAL_URL);
 const api = (p) => `${CANVAS}/api${p}`;
 const wantKit = flags['no-kit'] ? false : flags.kit || (mode === 'mock' && flags.fixture === 'ignura');
@@ -135,7 +141,7 @@ const liveArgs = () => (flags.live ? ['--live'] : []);
 const delayArgs = () => (flags.delay != null ? ['--delay', String(flags.delay)] : []);
 
 async function pushRun(dir) {
-  const code = await run(node, [join(ROOT, 'canvas/scripts/push-run.mjs'), dir, '--canvas', CANVAS, ...clearArgs(), ...liveArgs(), ...delayArgs()]);
+  const code = await run(node, [join(ROOT, 'canvas/scripts/push-run.mjs'), dir, '--canvas', CANVAS, ...boardArgs(), ...clearArgs(), ...liveArgs(), ...delayArgs()]);
   if (code !== 0) throw new Error(`push-run failed (exit ${code}). If it says it cannot load runToOps.ts you need Node >= 22.18.`);
 }
 
@@ -147,7 +153,7 @@ async function boardMock() {
     return { runDir: dir, report: readJson(join(dir, 'report.json')), source: 'fixture ignura' };
   }
   console.log('    fixture: "Fernly", a fictional plant-care app. Say "prepared sample run" out loud.');
-  const code = await run(node, [join(ROOT, 'canvas/scripts/seed-demo.mjs'), '--canvas', CANVAS, ...liveArgs(), ...(shouldClear() ? [] : ['--no-clear'])]);
+  const code = await run(node, [join(ROOT, 'canvas/scripts/seed-demo.mjs'), '--canvas', CANVAS, ...boardArgs(), ...(flags['force-prod'] ? ['--force-prod'] : []), ...liveArgs(), ...(shouldClear() ? [] : ['--no-clear'])]);
   if (code !== 0) throw new Error(`seed-demo failed (exit ${code})`);
   return { runDir: null, report: { product: { title: 'Fernly', description: 'A plant-care app: reminders, light checks and care tips.' } }, source: 'seed Fernly' };
 }
@@ -329,7 +335,7 @@ async function pushKit(kit, board) {
   if (kit.ugc) args.push('--ugc', kit.ugc);
   if (!kit.ads && !kit.campaigns.length && !kit.ugc) { note('kit: nothing to draw (every generator was skipped)'); return false; }
   if (board.runDir && ['report.json', 'qa-agent.json'].some((f) => existsSync(join(board.runDir, f)))) args.push('--run', board.runDir);
-  args.push('--canvas', CANVAS, ...liveArgs(), ...delayArgs());
+  args.push('--canvas', CANVAS, ...boardArgs(), ...liveArgs(), ...delayArgs());
   args.push('--replace'); // only removes kit-* / ad-* / gtm-* / ugc-* ids, never the teardown
   const code = await run(node, args);
   if (code !== 0) { note(`kit: push-kit.mjs failed (exit ${code})`); return false; }
@@ -344,7 +350,8 @@ function openBrowser(u) {
 // ---------------------------------------------------------------------------------------------------------------
 async function main() {
   console.log(`AstraHack teardown  mode=${mode}${url ? `  url=${url}` : ''}  canvas=${CANVAS}${flags['dry-run'] ? '  (dry run)' : ''}`);
-  if (mode === 'mock' && !isLocalCanvas() && !flags.canvas) throw new Error(`CANVAS_URL points at a remote board (${CANVAS}). Sample data should not land on a shared board by accident: pass --canvas ${CANVAS} explicitly if you mean it, or unset CANVAS_URL for the local canvas.`);
+  // sample/mock data never goes to the shared production board unless --force-prod says so (use --board sample-x instead)
+  if (mode === 'mock') assertSampleWriteAllowed({ board: BOARD, canvasUrl: CANVAS, forceProd: flags['force-prod'], what: 'mock sample data' });
   step(1, 'canvas');
   const canvas = await ensureCanvas();
   console.log(shouldClear() ? '    the board is cleared first (local canvas; --no-clear keeps it)' : '    existing board content is kept (shared/remote canvas; pass --clear to wipe it)');
