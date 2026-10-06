@@ -22,7 +22,7 @@ test('pipeline propagates submitted URL and run identity through bounded explora
         assert.equal(Object.hasOwn(options, 'maxRequests'), false);
         assert.equal(Object.hasOwn(options, 'concurrency'), false);
         assert.equal(Object.hasOwn(options, 'maxAgents'), false);
-        assert.equal(options.maxDurationMs, 300_000);
+        for (const key of ['maxPages','maxDepth','maxTurns','maxActions','maxDurationMs','maxOutputTokens']) assert.equal(Object.hasOwn(options, key), false);
         return { fleet: { status: 'completed' } };
       }, analyze: async path => { calls.push('analyze'); assert.equal(path, output); },
       capture: async path => { calls.push('capture'); assert.equal(path, join(output, 'fleet.json')); return { outputDir: join(output, 'feature-captures'), manifest: { gaps: [] } }; },
