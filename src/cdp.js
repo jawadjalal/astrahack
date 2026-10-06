@@ -86,6 +86,7 @@ export async function launchBrowser({ executable, headless = true, width = 1280,
   const args = [
     '--remote-debugging-port=0', `--user-data-dir=${profile}`,
     '--no-first-run', '--no-default-browser-check',
+    '--use-mock-keychain', '--password-store=basic', // a macOS Keychain prompt/stall otherwise delays the DevTools port past the wait
     `--window-size=${width},${height}`, 'about:blank'
   ];
   if (headless) args.unshift('--headless=new', '--disable-gpu');
