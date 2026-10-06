@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "name": "Acme checkout walkthrough",
+  "target": { "type": "website", "url": "https://acme.test/" },
+  "startedAt": "2026-10-06T10:00:00.000Z",
+  "finishedAt": "2026-10-06T10:00:30.000Z",
+  "status": "findings",
+  "assets": [
+    { "type": "screenshot", "path": "screenshots/000-initial.png", "purpose": "initial product view" },
+    { "type": "video", "path": "video/Checkout.webm", "journey": "Checkout" }
+  ],
+  "journeys": [
+    {
+      "name": "Checkout",
+      "status": "failed",
+      "video": "video/Checkout.webm",
+      "startedAt": "2026-10-06T10:00:01.000Z",
+      "finishedAt": "2026-10-06T10:00:20.000Z",
+      "steps": [
+        { "index": 1, "action": "goto", "url": "/", "status": "passed", "screenshot": "screenshots/001-Checkout-goto.png",
+          "regions": [{ "x": 0.1, "y": 0.2, "w": 0.5, "h": 0.1, "label": "Hero headline", "severity": "info" }] },
+        { "index": 2, "action": "click", "selector": "a.add-to-cart", "status": "passed", "screenshot": "screenshots/002-Checkout-click.png" },
+        { "index": 3, "action": "assertText", "text": "Order total", "status": "failed", "error": "Expected page text \"Order total\"", "screenshot": "screenshots/003-Checkout-assertText.png" }
+      ]
+    },
+    {
+      "name": "Pricing",
+      "status": "passed",
+      "startedAt": "2026-10-06T10:00:21.000Z",
+      "finishedAt": "2026-10-06T10:00:30.000Z",
+      "steps": [
+        { "index": 4, "action": "goto", "url": "/pricing", "status": "passed", "screenshot": "screenshots/004-Pricing-goto.png" },
+        { "index": 5, "action": "observe", "status": "passed", "screenshot": "screenshots/005-Pricing-observe.png" },
+        { "index": 6, "action": "click", "selector": "button.buy", "status": "passed" }
+      ]
+    }
+  ],
+  "findings": [
+    {
+      "id": "QA-001",
+      "severity": "high",
+      "journey": "Checkout",
+      "summary": "Cart shows no order total",
+      "expected": "The cart displays an order total",
+      "actual": "Expected page text \"Order total\"; the cart page has no total",
+      "stepsToReproduce": [{ "action": "goto", "url": "/" }, { "action": "click", "selector": "a.add-to-cart" }, { "action": "assertText", "text": "Order total" }],
+      "evidence": "screenshots/003-Checkout-assertText.png",
+      "observedAt": "2026-10-06T10:00:09.500Z",
+      "regions": [{ "x": 640, "y": 360, "w": 320, "h": 180, "unit": "pixels", "label": "Where the total should be" }]
+    }
+  ]
+}

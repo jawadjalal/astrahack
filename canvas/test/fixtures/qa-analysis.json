@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "target": "https://acme.test/",
+  "findings": [
+    { "id": "QA-001", "severity": "critical", "summary": "Add-to-cart button does nothing", "expected": "The cart count increases", "actual": "Nothing changed after the click", "reproduction": ["Open home", "Click add to cart"], "evidenceRefs": ["Q002", "FAKE"], "verification": "agent_reported" },
+    { "id": "QA-002", "severity": "low", "summary": "Possibly unclear pricing CTA", "expected": "A clear action", "actual": "Ambiguous wording", "reproduction": [], "evidenceRefs": ["C001"], "verification": "hypothesis" },
+    { "id": "QA-003", "severity": "blocker", "summary": "Checkout 500s", "expected": "Page loads", "actual": "HTTP 500", "reproduction": ["Open /checkout"], "evidenceRefs": ["CF001"], "verification": "recorded" }
+  ]
+}
