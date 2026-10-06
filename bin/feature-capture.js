@@ -3,7 +3,7 @@ import { captureMajorFeatures } from '../src/feature-capture.js';
 
 const args = process.argv.slice(2);
 if (!args.length || args.includes('--help')) {
-  console.log('Usage: node bin/feature-capture.js RUN_DIR/report.json [--output DIR]');
+  console.log('Usage: node bin/feature-capture.js RUN_DIR/report.json|crawl.json|qa-agent.json [--output DIR]');
   process.exit(args.includes('--help') ? 0 : 2);
 }
 const reportPath = args.shift();

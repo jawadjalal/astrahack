@@ -37,12 +37,15 @@ export function screenshotCandidates(report, runDir) {
   for (const journey of report.journeys || []) {
     for (const step of journey.steps || []) add(step.screenshot, step.observation, journey.name, step.index);
   }
+  for (const step of report.steps || []) {
+    add(step.screenshot, step.observation, 'QA exploration', step.index);
+  }
   // A crawler can hand over screenshots directly, without the journey runner's step shape.
   for (const item of report.observations || []) {
     add(item.screenshot, item.observation || item, item.journey || item.name || 'Exploration', item.step ?? null);
   }
   for (const asset of report.assets || []) {
-    if (asset?.type === 'screenshot' && !asset.journey) add(asset.path, report.product, 'Initial view', null);
+    if (asset?.type === 'screenshot' && !asset.journey) add(asset.path, report.initialObservation || report.product, 'Initial view', null);
   }
   return records;
 }

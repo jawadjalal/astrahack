@@ -47,3 +47,12 @@ test('candidate contract accepts crawler observations and rejects paths outside 
   assert.equal(candidates.length, 1);
   assert.equal(candidates[0].title, 'A');
 });
+
+test('candidate contract accepts QA exploration steps', () => {
+  const candidates = screenshotCandidates({
+    initialObservation: { title: 'Start' },
+    assets: [{ type: 'screenshot', path: 'screenshots/start.png' }],
+    steps: [{ index: 1, screenshot: 'screenshots/feature.png', observation: { title: 'Feature' } }]
+  }, '/tmp/run');
+  assert.deepEqual(candidates.map(item => item.title), ['Feature', 'Start']);
+});
