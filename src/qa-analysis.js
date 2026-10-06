@@ -200,9 +200,12 @@ export async function analyzeQa(runDir, { request = createResponse, model = proc
     reproduction: (f.reproduction || []).map(compact).filter(Boolean), evidenceRefs: validRefs(f.evidenceRefs),
     verification: 'hypothesis', uncertainty: compact(f.uncertainty) || 'Requires human reproduction.'
   })).filter(f => f.summary && f.actual && f.evidenceRefs.length);
+  const recorded = recordedFindings(crawl, agent, catalog);
+  const recordedRefs = new Set(recorded.flatMap(f => f.evidenceRefs));
+  const distinctCandidates = candidates.filter(f => !f.evidenceRefs.some(ref => ref.startsWith('CF') && recordedRefs.has(ref)));
   // Functional findings only (unless includeDesign): design opinions, speculation and findings without
   // steps, expected vs actual or evidence never reach the report.
-  const { kept, dropped } = filterFindings([...recordedFindings(crawl, agent, catalog), ...candidates], { includeDesign });
+  const { kept, dropped } = filterFindings([...recorded, ...distinctCandidates], { includeDesign });
   const findings = kept
     .sort((a, b) => (a.category === 'functional' ? 0 : 1) - (b.category === 'functional' ? 0 : 1) || severityRank[a.severity] - severityRank[b.severity])
     .map((f, i) => ({ id: `QA-${String(i + 1).padStart(3, '0')}`, ...f }));

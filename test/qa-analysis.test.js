@@ -143,6 +143,21 @@ test('HTML heading checks on linked media assets are excluded from QA findings',
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
+test('model hypothesis citing an existing crawler finding is not duplicated', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'astrahack-dedupe-analysis-'));
+  try {
+    await writeFile(join(dir, 'crawl.json'), JSON.stringify({ target: 'https://example.test/', pages: [], findings: [
+      { type: 'missing_h1', severity: 'low', url: 'https://example.test/work', actual: 'No visible H1 heading' }
+    ] }));
+    const request = async () => ({ output: [{ type: 'message', content: [{ type: 'output_text', text: JSON.stringify({
+      productSummary: '', observedFeatures: [], candidateFindings: [{ summary: 'Work page lacks an H1', severity: 'low', expected: 'H1', actual: 'No H1 detected', reproduction: ['Open work'], evidenceRefs: ['CF001'], uncertainty: 'Review DOM' }], limitations: []
+    }) }] }] });
+    const { report } = await analyzeQa(dir, { request, includeImages: false });
+    assert.equal(report.findings.length, 1);
+    assert.equal(report.findings[0].verification, 'recorded');
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
 test('catalog discards traversal screenshot references', () => {
   const catalog = evidenceCatalog({ pages: [{ url: 'https://example.test', screenshot: '../secret.png' }] });
   assert.equal(catalog[0].screenshot, null);
