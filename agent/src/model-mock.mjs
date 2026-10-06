@@ -27,6 +27,8 @@ export const EXPLORE_SCRIPT = [
   computer([{ type: 'click', selector: 'footer a' }], 'Following the footer Settings link.'),
   tools([
     { name: 'record_finding', args: { title: 'Footer Settings link leads to a 404', severity: 'medium', expected: 'Settings page opens', actual: 'A 404 "This page could not be found" screen is shown', repro_steps: ['Open any page', 'Click Settings in the footer'] } },
+    { name: 'record_finding', args: { title: 'Transfer fails with an error toast', severity: 'high', expected: 'A success toast confirms the $10 transfer', actual: 'An error toast appears and the transfer fails', repro_steps: ['Create an account', 'Click Send $10 to Sam', 'Read the toast'] } },
+    // a design opinion: the functional-only gate (src/findings-filter.js) rejects this one, the model is told why
     { name: 'record_finding', args: { title: 'Landing headline might have a typo', severity: 'low', expected: 'Headline copy is flawless', actual: 'I thought "instantly" looked odd, but could not point to a typo', repro_steps: ['Open the home page', 'Read the headline'] } },
     { name: 'note_coverage', args: { screen: 'Landing page', status: 'visited', detail: 'cold open' } },
     { name: 'note_coverage', args: { screen: 'Signup', status: 'visited', detail: 'tried invalid email' } },
@@ -41,7 +43,7 @@ const verifyPlans = [
   { match: /invalid email/i, actions: [[{ type: 'click', selector: '#cta' }], [{ type: 'click', selector: '#email' }, { type: 'type', text: 'not-an-email' }, { type: 'click', selector: '#submit' }]], reproduced: true, seen: 'After submitting "not-an-email" the wallet opened without any validation message.' },
   { match: /recent activity/i, actions: [[{ type: 'click', selector: '#cta' }], [{ type: 'click', selector: '#submit' }], [{ type: 'click', selector: '#send' }]], reproduced: true, seen: 'Balance went to $90.00 and Recent activity still says "No activity yet".' },
   { match: /settings/i, actions: [[{ type: 'click', selector: 'footer a' }]], reproduced: true, seen: 'A 404 page ("This page could not be found") is displayed.' },
-  { match: /typo/i, actions: [[{ type: 'screenshot' }]], reproduced: false, seen: 'The headline reads "Send money to anyone, instantly." with no typo.' }
+  { match: /error toast/i, actions: [[{ type: 'click', selector: '#cta' }], [{ type: 'click', selector: '#submit' }], [{ type: 'click', selector: '#send' }]], reproduced: false, seen: 'The toast reads "Sent $10 to Sam"; no error appears and the balance dropped to $90.00.' }
 ];
 
 export class MockSession {

@@ -341,7 +341,9 @@ export async function runTeardown({
   const videoPath = await recorder?.stop().catch(() => null);
   report.video = videoPath ? { path: relative(outDir, videoPath) } : null;
   if (inbox.pending) report.limitations.push(`${inbox.pending} steering message(s) arrived after exploration ended and were not applied.`);
-  report.findings = findings.sorted();
+  // aliases (summary/evidence/evidenceStep/reproduction) match the field names the runner and QA agent reports use,
+  // so tools that read their report.json (src/findings-filter.js, teardown wrappers) can read this one too.
+  report.findings = findings.sorted().map(f => ({ ...f, summary: f.title, evidence: f.screenshot, evidenceStep: f.stepIndex, reproduction: f.repro }));
   report.rejectedFindings = findings.rejected;
   report.includeDesign = includeDesign;
   report.counts = findings.counts();

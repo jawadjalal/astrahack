@@ -31,8 +31,9 @@ test('full mock run: findings recorded, replayed, verified or not, coverage emit
   const byTitle = Object.fromEntries(report.findings.map(f => [f.title, f]));
   assert.equal(byTitle['Sent money does not appear in Recent activity'].verified, true);
   assert.equal(byTitle['Signup accepts an invalid email address'].verified, true);
-  assert.equal(byTitle['Landing headline might have a typo'].verified, false);
-  assert.equal(byTitle['Landing headline might have a typo'].verification.status, 'not_reproduced');
+  assert.equal(byTitle['Transfer fails with an error toast'].verified, false);
+  assert.equal(byTitle['Transfer fails with an error toast'].verification.status, 'not_reproduced');
+  assert.equal(report.rejectedFindings.length, 1, 'the design opinion was refused by the functional-only gate');
   assert.deepEqual(report.counts.total, 4);
   assert.equal(report.counts.verified, 3);
   assert.ok(report.findings.every(f => ['critical', 'high', 'medium', 'low', 'info'].includes(f.severity)));
