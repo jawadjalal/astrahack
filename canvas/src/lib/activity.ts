@@ -86,8 +86,22 @@ export function describeOp(env: Envelope): ActivityRow | null {
       if (t) names.set(op.id, t);
       return { ...base, kind: "edit", text: `Updated ${nameOf(op.id)}`, ids: [op.id] };
     }
+    // ---- markup ops (draw, arrow_to, highlight, add_text, group); lock/order stay quiet ----
+    case "draw":
+      return { ...base, kind: "shape", text: `${op.style === "highlighter" ? "Highlighted" : "Drew"} on ${op.target ? nameOf(op.target) : "the board"}`, ids: [id] };
+    case "arrow_to": {
+      const end = (e: typeof op.to) => (typeof e === "string" ? nameOf(e) : "target" in e ? nameOf(e.target) : "a point");
+      return { ...base, kind: "arrow", text: `Pointed${op.label ? ` "${clip(op.label, 30)}"` : ""} at ${end(op.to)}`, ids: [id] };
+    }
+    case "highlight":
+      return { ...base, kind: "shape", text: `Highlighted ${op.label ? `"${clip(op.label, 40)}"` : "a region"} on ${nameOf(op.target)}`, ids: [id] };
+    case "add_text":
+      names.set(id, clip(op.text, 40));
+      return { ...base, kind: "shape", text: `Wrote: ${clip(op.text, 56)}`, ids: [id] };
+    case "group":
+      return op.ungroup ? null : { ...base, kind: "edit", text: `Grouped ${op.ids.length} elements${op.label ? ` as "${clip(op.label, 40)}"` : ""}`, ids: [id] };
     default:
-      return null; // focus, cursor
+      return null; // focus, cursor, lock, order
   }
 }
 
