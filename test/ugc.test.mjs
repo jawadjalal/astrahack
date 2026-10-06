@@ -180,6 +180,7 @@ test('openai path uses the shared Responses helper with strict structured output
   assert.equal(payload.p.text.format.type, 'json_schema');
   assert.equal(payload.p.text.format.strict, true);
   assert.equal(payload.p.store, false);
+  assert.equal(payload.p.reasoning.effort, 'low');
   assert.equal(payload.opts.apiKey, 'oa-key');
   assert.equal(payload.p.input[0].role, 'system');
   assert.deepEqual(validatePlan(plan, { assets }), []);

@@ -105,7 +105,8 @@ export function executePipelineProcess(job, { signal, onProgress, ...options }) 
       killGroup('SIGTERM');
       killTimer ||= setTimeout(() => killGroup('SIGKILL'), 5_000);
     };
-    const deadline = setTimeout(stop, 20 * 60_000);
+    // Leave room after fleet exploration for analysis, creative generation, and public uploads.
+    const deadline = setTimeout(stop, 45 * 60_000);
     const cleanup = () => { clearTimeout(deadline); clearTimeout(killTimer); signal?.removeEventListener('abort', stop); killGroup('SIGKILL'); };
     signal?.addEventListener('abort', stop, { once: true });
     child.on('message', message => {

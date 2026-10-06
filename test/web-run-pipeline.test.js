@@ -26,12 +26,14 @@ test('pipeline propagates submitted URL and run identity through bounded explora
         return { fleet: { status: 'completed' } };
       }, analyze: async path => { calls.push('analyze'); assert.equal(path, output); },
       capture: async path => { calls.push('capture'); assert.equal(path, join(output, 'fleet.json')); return { outputDir: join(output, 'feature-captures'), manifest: { gaps: [] } }; },
+      generateKit: async (path, options) => { calls.push('kit'); assert.equal(path, output); assert.equal(options.url, job.url); assert.equal(options.runId, job.id); return { status: 'complete', failures: [], ads: { runDir: 'ads' }, campaigns: { runDir: 'campaigns' }, ugc: { path: 'ugc-plan.json' } }; },
       publish: async (path, options) => { calls.push('publish'); assert.equal(path, output); assert.equal(options.runId, job.id); assert.equal(options.canvasUrl, 'https://ignura.com/astrahack'); assert.equal(options.clear, undefined); },
       publishFeatures: async (path, options) => { calls.push('features'); assert.equal(path, join(output, 'feature-captures/manifest.json')); assert.equal(options.canvasUrl, 'https://ignura.com/astrahack'); return {}; },
+      publishKit: async (kit, options) => { calls.push('publishKit'); assert.equal(options.runId, job.id); assert.equal(options.output, output); assert.equal(options.clear, undefined); assert.equal(options.replace, undefined); return { postedCount: 3 }; },
     });
     assert.equal(result.status, 'completed');
-    assert.deepEqual(calls, ['fleet', 'analyze', 'capture', 'publish', 'features']);
-    assert.deepEqual(events.map(event => event.stage), ['exploring', 'analyzing', 'capturing', 'publishing', 'publishing_features']);
+    assert.deepEqual(calls, ['fleet', 'analyze', 'capture', 'kit', 'publish', 'features', 'publishKit']);
+    assert.deepEqual(events.map(event => event.stage), ['exploring', 'analyzing', 'capturing', 'generating_kit', 'publishing', 'publishing_features', 'publishing_kit']);
   } finally { await rm(outputRoot, { recursive: true, force: true }); }
 });
 
@@ -47,11 +49,12 @@ test('failed fleet and analysis preserve crawl evidence and publish partial resu
       fleet: async () => { throw new Error(secret); },
       analyze: async () => { throw new Error(secret); },
       capture: async path => { assert.equal(basename(path), 'crawl.json'); throw new Error(secret); },
+      generateKit: async () => { throw new Error(secret); },
       publish: async () => { published++; },
     });
     assert.equal(result.status, 'partial');
     assert.equal(published, 1);
-    assert.deepEqual(result.failures, ['exploring', 'analyzing', 'capturing']);
+    assert.deepEqual(result.failures, ['exploring', 'analyzing', 'capturing', 'generating_kit']);
     assert.ok(!JSON.stringify([result, events]).includes(secret));
   } finally { await rm(outputRoot, { recursive: true, force: true }); }
 });
@@ -63,6 +66,7 @@ test('fleet limits remain partial even when every downstream stage succeeds', as
       outputRoot, fileExists: async path => basename(path) !== 'manifest.json',
       fleet: async () => ({ fleet: { status: 'partial' } }), analyze: async () => {},
       capture: async () => ({ manifest: { gaps: [] } }), publish: async () => {},
+      generateKit: async () => ({ status: 'complete', failures: [] }),
     });
     assert.equal(result.status, 'partial');
     assert.match(result.message, /Coverage limits/);
@@ -75,8 +79,26 @@ test('no recorded evidence fails without paid downstream calls or publishing', a
     const unexpected = () => assert.fail('must not run without evidence');
     const result = await runWebPipeline({ id: 'empty', url: 'https://customer.example' }, {
       outputRoot, fileExists: async () => false, fleet: async () => { throw new Error('Browser unavailable'); },
-      analyze: unexpected, capture: unexpected, publish: unexpected,
+      analyze: unexpected, capture: unexpected, publish: unexpected, generateKit: unexpected, publishKit: unexpected,
     });
     assert.equal(result.status, 'failed');
+  } finally { await rm(outputRoot, { recursive: true, force: true }); }
+});
+
+test('missing image provider preserves real campaign and UGC output while reporting partial completion', async () => {
+  const outputRoot = await mkdtemp(join(tmpdir(), 'astra-web-pipeline-kit-partial-'));
+  let published;
+  try {
+    const result = await runWebPipeline({ id: 'kit-partial', url: 'https://customer.example' }, {
+      outputRoot, fileExists: async path => basename(path) !== 'manifest.json',
+      fleet: async () => ({ fleet: { status: 'completed' } }), analyze: async () => {},
+      capture: async () => ({ manifest: { gaps: [] } }), publish: async () => {},
+      generateKit: async () => ({ status: 'partial', failures: ['ads'], campaigns: { runDir: 'real-campaigns' }, ugc: { path: 'real-ugc.json' } }),
+      publishKit: async kit => { published = kit; return { postedCount: 2 }; }
+    });
+    assert.equal(result.status, 'partial');
+    assert.deepEqual(result.failures, ['generating_ads']);
+    assert.equal(published.campaigns.runDir, 'real-campaigns');
+    assert.match(result.message, /generating_ads/);
   } finally { await rm(outputRoot, { recursive: true, force: true }); }
 });

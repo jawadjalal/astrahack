@@ -115,7 +115,7 @@ export default function RunExperience({ initialRunId = null, initialCanvas = fal
           <section className={styles.formPanel} aria-labelledby="url-question">
             <p className={styles.brand}>AstraHack</p>
             <h1 id="url-question">What’s the URL of your website or app?</h1>
-            <p className={styles.description}>We’ll explore its key flows, capture screenshots, and add findings to your canvas.</p>
+            <p className={styles.description}>We’ll explore its key flows, capture screenshots, and create ad concepts, X and Reddit campaign drafts, and UGC plans on your canvas.</p>
             <form onSubmit={submit}>
               <label className={styles.label} htmlFor="target-url">Website or web app URL</label>
               <div className={styles.fields}>

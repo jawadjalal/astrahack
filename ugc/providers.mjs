@@ -8,7 +8,7 @@ export const PROVIDERS = ['gemini', 'openai'];
 const MAX_OUTPUT_TOKENS = 16384;
 
 export function defaultModel(provider, env = process.env) {
-  return provider === 'gemini' ? env.GEMINI_TEXT_MODEL || 'gemini-3.5-flash' : env.OPENAI_TEXT_MODEL || 'gpt-6-astra';
+  return provider === 'gemini' ? env.GEMINI_TEXT_MODEL || 'gemini-3.5-flash' : env.OPENAI_TEXT_MODEL || 'gpt-6-luna';
 }
 
 /** Explicit choice wins, then UGC_PROVIDER / IMAGE_PROVIDER, then whichever key is set, then gemini. */
@@ -51,7 +51,7 @@ async function callGemini({ model, apiKey, system, user, schema, fetchImpl }) {
 
 async function callOpenAI({ model, apiKey, system, user, schema, fetchImpl, request }) {
   const payload = {
-    model, store: false, max_output_tokens: MAX_OUTPUT_TOKENS,
+    model, store: false, reasoning: { effort: 'low' }, max_output_tokens: MAX_OUTPUT_TOKENS,
     text: { format: { type: 'json_schema', name: 'ugc_plan', strict: true, schema } },
     input: [{ role: 'system', content: system }, { role: 'user', content: user }],
   };

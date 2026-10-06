@@ -10,28 +10,28 @@ function fixture(width=1024, height=1024) { const png = Buffer.alloc(24); Buffer
 async function temp(t) { const dir = await mkdtemp(join(tmpdir(),'astra-test-')); t.after(() => rm(dir,{ recursive:true, force:true })); return dir; }
 test('one prompt produces five distinct square image requests and five files', async t => {
   const outputDir = await temp(t); const calls = [];
-  const { runDir, manifest } = await generateCreatives({provider:"openai", prompt, outputDir, apiKey:'fake-key', fetchImpl:async (url,init) => { calls.push({url,body:JSON.parse(init.body)}); return Response.json({ data:[{ b64_json:fixture() }] }); } });
+  const { runDir, manifest } = await generateCreatives({provider:"openai",openaiApi:"images", prompt, outputDir, apiKey:'fake-key', fetchImpl:async (url,init) => { calls.push({url,body:JSON.parse(init.body)}); return Response.json({ data:[{ b64_json:fixture() }] }); } });
   assert.equal(manifest.status,'complete'); assert.equal(calls.length,5); assert.equal(new Set(calls.map(c=>c.body.prompt)).size,5);
   assert.ok(calls.every(c=>c.url==='https://api.openai.com/v1/images/generations' && c.body.size==='1024x1024' && c.body.n===1 && c.body.prompt.includes(prompt)));
   assert.equal((await readdir(runDir)).filter(f=>f.endsWith('.png')).length,5);
   assert.ok(!(await readFile(join(runDir,'manifest.json'),'utf8')).includes('fake-key'));
 });
 test('dry run saves five prompts without a key or network call',async t=>{
-  const {runDir,manifest}=await generateCreatives({provider:"openai",prompt,outputDir:await temp(t),apiKey:'',dryRun:true,fetchImpl:()=>{throw new Error('Must not call network');}});
+  const {runDir,manifest}=await generateCreatives({provider:"openai",openaiApi:"images",prompt,outputDir:await temp(t),apiKey:'',dryRun:true,fetchImpl:()=>{throw new Error('Must not call network');}});
   assert.equal(manifest.status,'dry-run'); assert.equal(manifest.creatives.length,5); assert.deepEqual(await readdir(runDir),['manifest.json']);
 });
 test('missing key fails before making an output directory',async t=>{
-  const outputDir=await temp(t); await assert.rejects(generateCreatives({provider:"openai",prompt,outputDir,apiKey:''}),/OPENAI_API_KEY/); assert.deepEqual(await readdir(outputDir),[]);
+  const outputDir=await temp(t); await assert.rejects(generateCreatives({provider:"openai",openaiApi:"images",prompt,outputDir,apiKey:''}),/OPENAI_API_KEY/); assert.deepEqual(await readdir(outputDir),[]);
 });
 test('partial failure preserves successful images, reports failure, and never retries',async t=>{
-  let calls=0; const {runDir,manifest}=await generateCreatives({provider:"openai",prompt,outputDir:await temp(t),apiKey:'fake',fetchImpl:async()=>++calls===2?Response.json({error:'sensitive provider detail'},{status:429}):Response.json({data:[{b64_json:fixture()}]})});
+  let calls=0; const {runDir,manifest}=await generateCreatives({provider:"openai",openaiApi:"images",prompt,outputDir:await temp(t),apiKey:'fake',fetchImpl:async()=>++calls===2?Response.json({error:'sensitive provider detail'},{status:429}):Response.json({data:[{b64_json:fixture()}]})});
   assert.equal(calls,5); assert.equal(manifest.status,'partial'); assert.equal((await readdir(runDir)).filter(f=>f.endsWith('.png')).length,4); assert.equal(manifest.creatives[1].error,'OpenAI quota or rate limit reached.');
 });
 test('rejects missing and non-square images',async t=>{
-  let calls=0; const {manifest,runDir}=await generateCreatives({provider:"openai",prompt,outputDir:await temp(t),apiKey:'fake',fetchImpl:async()=>Response.json(++calls%2?{data:[]}:{data:[{b64_json:fixture(1536,1024)}]})});
+  let calls=0; const {manifest,runDir}=await generateCreatives({provider:"openai",openaiApi:"images",prompt,outputDir:await temp(t),apiKey:'fake',fetchImpl:async()=>Response.json(++calls%2?{data:[]}:{data:[{b64_json:fixture(1536,1024)}]})});
   assert.equal(manifest.status,'failed'); assert.deepEqual(await readdir(runDir),['manifest.json']);
 });
-test('rejects empty prompts',async()=>{await assert.rejects(generateCreatives({provider:"openai",prompt:'',dryRun:true}),/nonempty/);});
+test('rejects empty prompts',async()=>{await assert.rejects(generateCreatives({provider:"openai",openaiApi:"images",prompt:'',dryRun:true}),/nonempty/);});
 test('Nano Banana generates five square PNGs with Google authentication', async t => {
   const calls=[];
   const {runDir,manifest}=await generateCreatives({provider:'gemini',prompt,outputDir:await temp(t),apiKey:'google-test-secret',fetchImpl:async(url,init)=>{
@@ -47,4 +47,38 @@ test('Nano Banana generates five square PNGs with Google authentication', async 
 test('Google quota failures preserve sanitized errors without retries',async t=>{
   let calls=0;const {manifest}=await generateCreatives({provider:'gemini',prompt,outputDir:await temp(t),apiKey:'fake',fetchImpl:async()=>{calls++;return Response.json({error:'private details'},{status:429});}});
   assert.equal(calls,5);assert.equal(manifest.status,'failed');assert.ok(manifest.creatives.every(c=>c.error==='Google quota or rate limit reached.'));
+});
+
+test('OpenAI Responses produces five real-image payloads with Luna and the selected image tool', async t => {
+  const calls = [];
+  const { runDir, manifest } = await generateCreatives({ provider: 'openai', prompt, outputDir: await temp(t), apiKey: 'fixture-key',
+    fetchImpl: async (url, options) => {
+      calls.push({ url, options, payload: JSON.parse(options.body) });
+      return Response.json({ status: 'completed', usage: { input_tokens: 50, output_tokens: 20 }, output: [{ type: 'image_generation_call', status: 'completed', result: fixture() }] });
+    } });
+  assert.equal(manifest.status, 'complete');
+  assert.equal(manifest.api, 'responses');
+  assert.equal(manifest.responseModel, 'gpt-6-luna');
+  assert.equal(calls.length, 5);
+  assert.equal(new Set(calls.map(call => call.payload.input)).size, 5);
+  for (const call of calls) {
+    assert.equal(call.url, 'https://api.openai.com/v1/responses');
+    assert.equal(call.payload.model, 'gpt-6-luna');
+    assert.equal(call.payload.store, false);
+    assert.equal(call.options.headers.Authorization, 'Bearer fixture-key');
+    assert.deepEqual(call.payload.tools, [{ type: 'image_generation', model: 'gpt-image-2', size: '1024x1024', quality: 'low', output_format: 'png' }]);
+    assert.deepEqual(call.payload.tool_choice, { type: 'image_generation' });
+  }
+  assert.equal(manifest.creatives[0].usage.input_tokens, 50);
+  assert.equal((await readdir(runDir)).filter(name => name.endsWith('.png')).length, 5);
+});
+
+test('incomplete Responses image calls never become complete creatives or trigger endpoint fallback', async t => {
+  const urls = [];
+  const { manifest, runDir } = await generateCreatives({ provider: 'openai', prompt, outputDir: await temp(t), apiKey: 'fixture-key',
+    fetchImpl: async url => { urls.push(url); return Response.json({ status: 'incomplete', output: [{ type: 'image_generation_call', status: 'in_progress', result: fixture() }] }); } });
+  assert.equal(manifest.status, 'failed');
+  assert.equal(urls.length, 5);
+  assert.ok(urls.every(url => url.endsWith('/responses')));
+  assert.deepEqual(await readdir(runDir), ['manifest.json']);
 });

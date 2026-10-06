@@ -18,7 +18,7 @@ Options:
   --brief TEXT          what the team wants: audience, goal, platforms, tone
   --brief-file PATH     read the brief from a file
   --provider NAME       gemini | openai (default: UGC_PROVIDER, else whichever API key is set)
-  --model ID            override GEMINI_TEXT_MODEL / OPENAI_TEXT_MODEL
+  --model ID            override GEMINI_TEXT_MODEL / OPENAI_TEXT_MODEL (OpenAI default: gpt-6-luna)
   --out DIR             where to write ugc-plan.json and ugc-plan.md (default: the run directory)
   --mock                deterministic plan from the report, no API key
   --dry-run             print the prompts and schema, write nothing

@@ -22,7 +22,7 @@ async function temp(t) { const dir = await mkdtemp(join(tmpdir(), 'campaign-test
 
 test('generates both channel documents with authenticated structured requests', async t => {
   const calls = [];
-  const { runDir, manifest } = await generateCampaigns({ prompt: 'Gradlify tutoring campaign', apiKey: 'test-secret', outputDir: await temp(t), fetchImpl: async (url, init) => {
+  const { runDir, manifest } = await generateCampaigns({ provider: 'gemini', prompt: 'Gradlify tutoring campaign', apiKey: 'test-secret', outputDir: await temp(t), fetchImpl: async (url, init) => {
     calls.push({ url, ...init }); return response(calls.length === 1 ? 'x' : 'reddit');
   } });
   assert.equal(manifest.status, 'complete'); assert.equal(calls.length, 2);
@@ -36,17 +36,17 @@ test('generates both channel documents with authenticated structured requests', 
 test('dry run requires no key or network and validates input before output', async t => {
   const outputDir = await temp(t);
   for (const input of [{ prompt: '' }, { prompt: 'a', channels: ['x', 'x'] }, { prompt: 'a', channels: ['bad'] }]) {
-    await assert.rejects(generateCampaigns({ ...input, outputDir, dryRun: true }));
+    await assert.rejects(generateCampaigns({ provider: 'gemini', ...input, outputDir, dryRun: true }));
   }
-  await assert.rejects(generateCampaigns({ prompt: 'Product', outputDir, apiKey: '' }), /GEMINI_API_KEY/);
+  await assert.rejects(generateCampaigns({ provider: 'gemini', prompt: 'Product', outputDir, apiKey: '' }), /GEMINI_API_KEY/);
   assert.deepEqual(await readdir(outputDir), []);
-  const { manifest, runDir } = await generateCampaigns({ prompt: 'Product', outputDir, apiKey: '', dryRun: true, fetchImpl: () => assert.fail('network') });
+  const { manifest, runDir } = await generateCampaigns({ provider: 'gemini', prompt: 'Product', outputDir, apiKey: '', dryRun: true, fetchImpl: () => assert.fail('network') });
   assert.equal(manifest.status, 'dry-run'); assert.deepEqual(await readdir(runDir), ['manifest.json']);
   assert.match(planCampaigns('Product')[1].prompt, /disclose product affiliation/);
 });
 test('channel failure preserves successful campaign without retries or provider error leaks', async t => {
   let calls = 0;
-  const { manifest, runDir } = await generateCampaigns({ prompt: 'Product', apiKey: 'secret', outputDir: await temp(t), fetchImpl: async () => ++calls === 1 ? response('x') : Response.json({ error: 'secret' }, { status: 429 }) });
+  const { manifest, runDir } = await generateCampaigns({ provider: 'gemini', prompt: 'Product', apiKey: 'secret', outputDir: await temp(t), fetchImpl: async () => ++calls === 1 ? response('x') : Response.json({ error: 'secret' }, { status: 429 }) });
   assert.equal(calls, 2); assert.equal(manifest.status, 'partial');
   assert.equal(manifest.campaigns[1].error, 'Provider request failed (HTTP 429).');
   assert.ok(!(await readFile(join(runDir, 'manifest.json'), 'utf8')).includes('secret'));
@@ -54,7 +54,7 @@ test('channel failure preserves successful campaign without retries or provider 
 });
 test('rejects malformed, truncated and structurally incomplete responses', async t => {
   for (const fetchImpl of [async () => response('x', 'MAX_TOKENS'), async () => Response.json({ candidates: [{ finishReason: 'STOP', content: { parts: [{ text: '{}' }] } }] }), async () => Response.json({ candidates: [] })]) {
-    const { manifest, runDir } = await generateCampaigns({ prompt: 'Product', channels: ['x'], apiKey: 'fake', outputDir: await temp(t), fetchImpl });
+    const { manifest, runDir } = await generateCampaigns({ provider: 'gemini', prompt: 'Product', channels: ['x'], apiKey: 'fake', outputDir: await temp(t), fetchImpl });
     assert.equal(manifest.status, 'failed'); assert.deepEqual(await readdir(runDir), ['manifest.json']);
   }
 });
@@ -65,4 +65,34 @@ test('rejects overlength X posts, duplicate days and nonexistent content referen
   assert.throws(() => validateCampaign(duplicate, 'reddit'), /calendar/);
   const dangling = fixture('x'); dangling.calendar[0].contentId = 'nonexistent';
   assert.throws(() => validateCampaign(dangling, 'x'), /calendar/);
+});
+
+test('OpenAI Luna generates both campaigns through strict Responses output', async t => {
+  const calls = [];
+  const { manifest, runDir } = await generateCampaigns({ provider: 'openai', prompt: 'Observed product and launch brief', apiKey: 'openai-test-secret', outputDir: await temp(t),
+    fetchImpl: async (url, init) => {
+      calls.push({ url, init, payload: JSON.parse(init.body) });
+      return Response.json({ status: 'completed', usage: { input_tokens: 20, output_tokens: 400 }, output: [{ type: 'message', content: [{ type: 'output_text', text: JSON.stringify(fixture(calls.length === 1 ? 'x' : 'reddit')) }] }] });
+    } });
+  assert.equal(manifest.status, 'complete');
+  assert.equal(manifest.provider, 'openai');
+  assert.equal(manifest.model, 'gpt-6-luna');
+  assert.equal(calls.length, 2);
+  assert.ok(calls.every(call => call.url === 'https://api.openai.com/v1/responses'));
+  assert.ok(calls.every(call => call.init.headers.Authorization === 'Bearer openai-test-secret'));
+  assert.ok(calls.every(call => call.payload.model === 'gpt-6-luna' && call.payload.store === false));
+  assert.equal(calls[0].payload.text.format.strict, true);
+  assert.deepEqual(calls[0].payload.text.format.schema, campaignSchema('x'));
+  assert.equal(manifest.campaigns[0].usage.output_tokens, 400);
+  assert.deepEqual((await readdir(runDir)).sort(), ['manifest.json', 'reddit-campaign.json', 'reddit-campaign.md', 'x-campaign.json', 'x-campaign.md']);
+});
+
+test('incomplete OpenAI campaign output is marked failed without saving drafts or retrying', async t => {
+  let calls = 0;
+  const { manifest, runDir } = await generateCampaigns({ provider: 'openai', prompt: 'Product', channels: ['x'], apiKey: 'fixture-key', outputDir: await temp(t),
+    fetchImpl: async () => { calls++; return Response.json({ status: 'incomplete', output: [] }); } });
+  assert.equal(calls, 1);
+  assert.equal(manifest.status, 'failed');
+  assert.match(manifest.campaigns[0].error, /did not finish/);
+  assert.deepEqual(await readdir(runDir), ['manifest.json']);
 });

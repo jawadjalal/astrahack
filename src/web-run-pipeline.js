@@ -7,6 +7,7 @@ import { analyzeQa } from './qa-analysis.js';
 import { captureMajorFeatures } from './feature-capture.js';
 import { publishFeatureCaptures } from './feature-canvas.js';
 import { createResponse } from './openai.js';
+import { generateWebKit, publishWebKit } from './web-run-kit.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const exists = async path => { try { await access(path); return true; } catch { return false; } };
@@ -39,6 +40,7 @@ export async function runWebPipeline(job, options = {}) {
   const { canvasUrl, chrome, signal, onProgress = async () => {}, outputRoot = join(root, 'runs'),
     fleet = runFleet, analyze = analyzeQa, capture = captureMajorFeatures,
     publish = pushRun, publishFeatures = publishFeatureCaptures,
+    generateKit = generateWebKit, publishKit = publishWebKit,
     fileExists = exists } = options;
   const output = join(resolve(outputRoot), `web-${job.id}`);
   await mkdir(output, { recursive: true });
@@ -46,6 +48,7 @@ export async function runWebPipeline(job, options = {}) {
   let incomplete = false;
   let fleetResult;
   let captureResult;
+  let kitResult;
   let published = false;
   const progress = async (stage, message) => onProgress({ stage, message });
   const stage = async (name, message, work) => {
@@ -66,15 +69,22 @@ export async function runWebPipeline(job, options = {}) {
   if (fleetResult && fleetResult.fleet?.status !== 'completed') incomplete = true;
   const hasEvidence = await fileExists(join(output, 'crawl.json')) || await fileExists(join(output, 'qa-agent.json'));
   if (hasEvidence && !signal?.aborted) {
-    await stage('analyzing', 'Analyzing recorded QA evidence.', () => analyze(output, {
-      request: (payload, requestOptions = {}) => createResponse(payload, { ...requestOptions, signal }),
-    }));
     const captureReport = await fileExists(join(output, 'fleet.json')) ? 'fleet.json'
       : await fileExists(join(output, 'qa-agent.json')) ? 'qa-agent.json' : 'crawl.json';
-    captureResult = await stage('capturing', 'Selecting screenshots of observed features.', () => capture(join(output, captureReport), {
-      fetchImpl: boundedFetch(signal),
-    }));
+    [, captureResult, kitResult] = await Promise.all([
+      stage('analyzing', 'Analyzing recorded QA evidence.', () => analyze(output, {
+        request: (payload, requestOptions = {}) => createResponse(payload, { ...requestOptions, signal }),
+      })),
+      stage('capturing', 'Selecting screenshots of observed features.', () => capture(join(output, captureReport), {
+        fetchImpl: boundedFetch(signal),
+      })),
+      stage('generating_kit', 'Creating ad images, X and Reddit campaigns, and UGC scripts.', () => generateKit(output, {
+        url: job.url, runId: job.id, signal, onProgress,
+      }))
+    ]);
     if (captureResult?.manifest?.gaps?.length) incomplete = true;
+    if (kitResult?.status !== 'complete') incomplete = true;
+    failures.push(...(kitResult?.failures || []).map(name => `generating_${name}`));
     const result = await stage('publishing', 'Publishing QA evidence to the canvas.', async () => {
       await publish(output, { canvasUrl, runId: job.id, signal });
       return true;
@@ -87,13 +97,19 @@ export async function runWebPipeline(job, options = {}) {
       }));
       published ||= Boolean(features);
     }
+    if (kitResult && [kitResult.ads, kitResult.campaigns, kitResult.ugc].some(Boolean)) {
+      const kit = await stage('publishing_kit', 'Publishing ad images, campaign drafts, and UGC scripts.', () => publishKit(kitResult, {
+        output, canvasUrl, runId: job.id, signal,
+      }));
+      published ||= Boolean(kit);
+    }
   }
   const status = !hasEvidence ? 'failed' : signal?.aborted || failures.length || incomplete || !published ? 'partial' : 'completed';
   const message = signal?.aborted ? 'Run interrupted. Available local evidence has been retained.'
     : !hasEvidence ? 'Exploration produced no usable evidence.'
       : !published ? 'Evidence was saved locally, but publishing to the canvas did not finish.'
         : status === 'partial' ? `Available evidence is on the canvas. ${failures.length ? `Incomplete stages: ${failures.join(', ')}.` : 'Coverage limits or screenshot gaps remain.'}`
-          : 'QA evidence and selected screenshots are on the canvas.';
+          : 'QA evidence, feature screenshots, ad images, X and Reddit campaign drafts, and UGC scripts are on the canvas.';
   return { status, stage: 'finished', message, output, failures };
 }
 
