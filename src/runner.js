@@ -19,12 +19,12 @@ async function until(check, description, timeoutMs = 10000) {
 
 const pageUrl = cdp => cdp.eval('location.href');
 
-async function navigate(cdp, url) {
+export async function navigate(cdp, url) {
   await cdp.send('Page.navigate', { url });
   await until(() => cdp.eval('document.readyState === "complete"'), `page load: ${url}`, 15000);
 }
 
-async function observe(cdp) {
+export async function observe(cdp) {
   return cdp.eval(`(() => {
     const clean = text => (text || '').replace(/\\s+/g, ' ').trim();
     const visible = el => !!(el.getClientRects().length && getComputedStyle(el).visibility !== 'hidden');
@@ -44,7 +44,7 @@ async function observe(cdp) {
   })()`);
 }
 
-async function screenshot(cdp, path) {
+export async function screenshot(cdp, path) {
   const result = await cdp.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
   await writeFile(path, Buffer.from(result.data, 'base64'));
 }

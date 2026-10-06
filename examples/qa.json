@@ -1,0 +1,9 @@
+{
+  "url": "https://example.com",
+  "brief": "Describe the product and exercise its main read-only journeys.",
+  "maxPages": 20,
+  "maxDepth": 3,
+  "maxTurns": 12,
+  "maxActions": 40,
+  "model": "gpt-6-astra"
+}

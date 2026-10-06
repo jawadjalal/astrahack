@@ -95,6 +95,24 @@ The report records observed facts only. Downstream agents should treat marketing
 
 Exit status is `0` for a passing run, `1` for QA findings, and `2` for setup or runtime errors. Run `npm test` for the local fixture integration test.
 
+### QA crawl and Astra agent
+
+The QA fleet has two more stages. A bounded crawler follows same-origin HTML links and saves a page inventory, screenshots, basic navigation findings, and an `observations[]` handoff for feature capture. A GPT-6 Astra computer-use agent then exercises read-only flows in an isolated Chrome profile and records each UI action with an observation and screenshot.
+
+Copy and edit [`examples/qa.json`](examples/qa.json), then run:
+
+```sh
+ASTRAHACK_CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+  npm run qa -- crawl examples/qa.json --output runs/site-crawl
+
+OPENAI_API_KEY=... ASTRAHACK_CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+  npm run qa -- agent examples/qa.json --output runs/site-agent
+```
+
+The crawler writes `crawl.json`; the agent writes `qa-agent.json`. Both are accepted by the feature capture tool. The agent uses the OpenAI Responses API with model `gpt-6-astra` and the `computer` tool. It sends current viewport screenshots to the API, then executes bounded mouse and keyboard actions in Chrome. `maxTurns` and `maxActions` limit the run. It blocks external links and several consequential button labels, and resets navigation if the page leaves the starting origin. Treat these as MVP safeguards: run against a test account and review any site that can make consequential changes through innocuous controls. Agent assessments are kept separate from observed action records; issue references without a matching evidence step are marked unverified.
+
+The crawler is read-only and does not bypass login, expand every interaction, or infer all product features from links alone. The model agent can interact with visible controls but cannot handle native dialogs. The `OPENAI_API_KEY` variable is needed only for the model-driven stage. The local tests use a mocked API response and do not incur API charges.
+
 ### Capture major feature screenshots
 
 After a run, use the dedicated feature capture agent to review the observed screens with GPT-6 Astra and create a curated screenshot set:
