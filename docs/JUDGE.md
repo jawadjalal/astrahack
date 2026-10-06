@@ -18,8 +18,8 @@ Judges:
   figures checked against the observed feature text and proposals, and template rewrites built from the product's
   real feature names and the on-page text the run confirmed. Override the model with `OPENAI_JUDGE_MODEL`.
 
-Canvas: `--canvas http://localhost:3000` reads `/api/state`, finds the latest UGC lane (`<prefix>-ugc-hook-N` from
-`scripts/lib/kit-lane.mjs`), and draws a Judge scorecard under it: one orange note per rewritten hook (v1 → v2 with
+Canvas: `--canvas http://localhost:3000` reads `/api/state`, finds the UGC cards push-kit drew (`ugc-S1`, `ugc-H2`;
+older `<prefix>-ugc-hook-N` too), and draws a Judge scorecard under them: one orange note per rewritten hook (v1 → v2 with
 scores), a scripts note, `arrow_to` from each note to the original hook card (matched by text), and a `say`
 ("Judge: 10 hooks rewritten, avg 5.9 → 9.6 ..."). Ids are `judge-<tag>-…`. `--dry-run` prints the ops instead.
 

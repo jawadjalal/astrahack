@@ -1,26 +1,40 @@
-// Judge scorecard ops: notes next to the UGC lane drawn by scripts/lib/kit-lane.mjs (ids `<prefix>-ugc-hook-N`),
-// a `say` summary, and arrow_to from each scorecard to the original hook card when it can be found.
-import { boardBounds } from '../scripts/lib/kit-lane.mjs';
+// Judge scorecard ops: notes under the UGC cards that push-kit (canvas/src/lib/kitToOps.ts, ids `ugc-<S1|H2>`) or the
+// older kit lane (`<prefix>-ugc-hook-N`) drew, a `say` summary, and arrow_to from each note to the card that shows the
+// original hook (matched by the hook's text, so it never points at the wrong card).
 
 const W = 380, GAP = 40;
 const noteHeight = (text, w) => Math.max(120, Math.ceil(String(text).length / Math.floor(w / 9)) * 24 + 56);
+const UGC_ID = /(^|-)ugc-/;
 
-/** Locate the latest UGC lane on the board: hook card ids by 1-based index, and the lane's bottom-left corner. */
+/** Live UGC cards on the board ({id, text}) and their bounding box; null if there are none. */
 export function findUgcLane(envs) {
-  const dead = new Set();
-  for (const { op } of envs) { if (op.type === 'clear') dead.clear(); else if (op.type === 'delete') dead.add(op.id); }
-  const lanes = new Map(); // prefix -> {cards, minX, maxY}
-  for (const { op } of envs) {
-    const m = typeof op.id === 'string' && op.id.match(/^(.*)-ugc-(hook-(\d+)|scripts|h)$/);
-    if (!m || dead.has(op.id) || typeof op.x !== 'number') continue;
-    const lane = lanes.get(m[1]) || { prefix: m[1], cards: new Map(), minX: Infinity, maxY: -Infinity };
-    if (m[3]) lane.cards.set(Number(m[3]), { id: op.id, text: String(op.text || '') });
-    lane.minX = Math.min(lane.minX, op.x);
-    lane.maxY = Math.max(lane.maxY, op.y + (op.h ?? 60));
-    lanes.set(m[1], lane);
+  const live = new Map();
+  for (const e of envs) {
+    const op = e?.op ?? e;
+    if (op.type === 'clear') live.clear();
+    else if (op.type === 'delete') live.delete(op.id);
+    else if (op.type === 'move' && live.has(op.id)) Object.assign(live.get(op.id), { x: op.x, y: op.y });
+    else if (op.type === 'add_shape' && typeof op.id === 'string' && UGC_ID.test(op.id) && typeof op.x === 'number') {
+      live.set(op.id, { id: op.id, text: String(op.text || ''), x: op.x, y: op.y, w: op.w ?? 380, h: op.h ?? 200 });
+    }
   }
-  const all = [...lanes.values()];
-  return all.length ? all[all.length - 1] : null;
+  if (!live.size) return null;
+  const cards = [...live.values()];
+  const minX = Math.min(...cards.map((c) => c.x)), maxY = Math.max(...cards.map((c) => c.y + c.h));
+  const m = cards[0].id.match(/^(.*?)-?ugc-/);
+  return { prefix: m?.[1] || 'ugc', cards, minX, maxY };
+}
+
+/** Where the board ends (for a board with no UGC cards). */
+function boardBounds(envs) {
+  let maxX = 0, minY = Infinity;
+  for (const e of envs) {
+    const op = e?.op ?? e;
+    if (!/^add_/.test(op.type) || typeof op.x !== 'number' || op.x < -50000) continue;
+    maxX = Math.max(maxX, op.x + (op.w ?? 520));
+    minY = Math.min(minY, op.y);
+  }
+  return { maxX, minY: Number.isFinite(minY) ? minY : 0 };
 }
 
 /**
@@ -47,10 +61,8 @@ export function judgeOps(report, plan, envs = [], { tag = Date.now().toString(36
     const h = noteHeight(text, W);
     const nid = id(r.id);
     ops.push({ type: 'add_shape', id: nid, kind: 'note', x: cx, y, w: W, h, text, color: 'orange' });
-    // match the lane card by its hook text (the lane may come from another plan); index is only a tiebreak
-    const idx = plan.hooks.findIndex((hk) => hk.id === r.id) + 1;
-    const cards = lane ? [...lane.cards.entries()] : [];
-    const card = (cards.find(([n, c]) => n === idx && c.text.includes(v1.text)) || cards.find(([, c]) => c.text.includes(v1.text)))?.[1]?.id;
+    const cards = (lane?.cards || []).filter((c) => c.text.includes(`"${v1.text}"`));
+    const card = (cards.find((c) => c.id === `ugc-${r.id}`) || cards[0])?.id;
     if (card) ops.push({ type: 'arrow_to', id: id(`a-${r.id}`), from: nid, to: card, label: `v2 ${v2.overall.toFixed(1)}`, color: 'orange' });
     rowH = Math.max(rowH, h);
     cx += W + GAP;

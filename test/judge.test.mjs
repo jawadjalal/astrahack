@@ -78,8 +78,12 @@ test('model path: gpt-6-astra structured outputs via a stubbed fetch, key never 
 
 test('canvas ops sit under the UGC lane and arrow to the matching hook cards', async () => {
   const { report } = await judgePlan(fresh(), { mock: true });
-  const envs = plan.hooks.slice(0, 6).map((h, i) => ({ seq: i, ts: 0, op: { type: 'add_shape', id: `kitab12-ugc-hook-${i + 1}`, kind: 'note', x: 4000 + i * 420, y: 900, h: 140, text: `PROPOSED HOOK · ${h.format}\n"${h.text}"` } }));
-  assert.equal(findUgcLane(envs).prefix, 'kitab12');
+  // push-kit layout (canvas/src/lib/kitToOps.ts): one card per script (ugc-S1, text carries HOOK: "...") + lone hooks (ugc-H2)
+  const used = new Set(plan.scripts.map((x) => x.hookId));
+  const cardsSpec = [...plan.scripts.map((x) => ({ id: `ugc-${x.id}`, text: `TikTok\n${x.id}\nHOOK: "${plan.hooks.find((h) => h.id === x.hookId).text}"` })),
+    ...plan.hooks.filter((h) => !used.has(h.id)).map((h) => ({ id: `ugc-${h.id}`, text: `HOOK  ·  pov\n${h.id}\n"${h.text}"` }))];
+  const envs = cardsSpec.map((c, i) => ({ seq: i, ts: 0, op: { type: 'add_shape', id: c.id, kind: 'rectangle', x: 4000 + i * 420, y: 900, w: 380, h: 140, text: c.text } }));
+  assert.equal(findUgcLane(envs).cards.length, 10);
   const { ops, say } = judgeOps(report, plan, envs, { tag: 't1' });
   for (const o of ops) if (o.id) { assert.ok(o.id.startsWith('judge-t1-') && o.id.length <= 64, o.id); }
   const arrows = ops.filter((o) => o.type === 'arrow_to');
@@ -88,6 +92,11 @@ test('canvas ops sit under the UGC lane and arrow to the matching hook cards', a
   assert.ok(ops.find((o) => o.id === 'judge-t1-title').y > 900);
   assert.match(say, /^Judge: \d+ hooks rewritten, avg \d\.\d → \d+\.\d/);
   assert.ok(ops.some((o) => o.type === 'say'));
+  assert.equal(arrows.length, report.items.filter((r) => r.kind === 'hook' && r.rewritten).length);
+  assert.ok(arrows.some((a) => a.to === 'ugc-S1') && arrows.some((a) => a.to === 'ugc-H2'));
+  // the older kit lane ids still resolve
+  const legacy = [{ op: { type: 'add_shape', id: 'kitab12-ugc-hook-1', kind: 'note', x: 10, y: 10, text: `PROPOSED HOOK\n"${plan.hooks[0].text}"` } }];
+  assert.ok(judgeOps(report, plan, legacy, { tag: 't3' }).ops.some((o) => o.type === 'arrow_to' && o.to === 'kitab12-ugc-hook-1'));
   const lone = judgeOps(report, plan, [], { tag: 't2' });
   assert.equal(lone.ops.filter((o) => o.type === 'arrow_to').length, 0);
 });
