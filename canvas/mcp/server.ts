@@ -140,7 +140,7 @@ async function replay(): Promise<{ seq: number; els: Map<string, El> }> {
   const els = new Map<string, El>();
   for (const env of (st.ops ?? []) as { seq: number; op: any }[]) {
     const op = env.op;
-    const id: string | undefined = op.id ?? (op.type?.startsWith("add_") || op.type === "annotate" ? `#${env.seq}` : undefined);
+    const id: string | undefined = op.id ?? (op.type?.startsWith("add_") || ["annotate", "draw", "arrow_to", "highlight", "group"].includes(op.type) ? `#${env.seq}` : undefined);
     switch (op.type) {
       case "add_image": case "add_video": {
         const w = op.w ?? (op.type === "add_video" ? 640 : 900);
@@ -158,6 +158,30 @@ async function replay(): Promise<{ seq: number; els: Map<string, El> }> {
       case "add_finding":
         els.set(id!, { id: id!, type: "finding", x: op.x, y: op.y, w: 360, h: 200, label: op.title, extra: { severity: op.severity, verified: op.verified, expected: op.expected, actual: op.actual, target: op.target, timestamp: op.timestamp }, seq: env.seq });
         break;
+      // ---- markup ops (draw / arrow_to / highlight / add_text / group / lock) ----
+      case "draw": {
+        const pts: { x: number; y: number }[] = op.points ?? [];
+        const inCanvas = op.space !== "target";
+        const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
+        els.set(id!, { id: id!, type: op.style === "highlighter" ? "highlighter" : "draw", ...(inCanvas ? { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) } : {}), extra: { points: pts.length, color: op.color, target: op.target, space: inCanvas ? undefined : "target" }, seq: env.seq });
+        break;
+      }
+      case "arrow_to": els.set(id!, { id: id!, type: "arrow", label: op.label, extra: { from: op.from, to: op.to, color: op.color }, seq: env.seq }); break;
+      case "highlight": els.set(id!, { id: id!, type: "highlight-box", label: op.label, extra: { target: op.target, box: op.box, kind: op.kind, color: op.color }, seq: env.seq }); break;
+      case "add_text": els.set(id!, { id: id!, type: "text", ...(op.x != null && op.y != null && !op.target ? { x: op.x, y: op.y, w: op.w ?? 200, h: 40 } : {}), label: op.text, extra: { color: op.color, target: op.target, at: op.at }, seq: env.seq }); break;
+      case "group": {
+        if (op.ungroup) { for (const gid of op.ids) { const g = els.get(gid); if (g?.type === "group") els.delete(gid); } break; }
+        const kids = (op.ids as string[]).map((k) => els.get(k)).filter((k): k is El => !!k);
+        const placed = kids.filter((k) => k.x != null);
+        const g: El = { id: id!, type: "group", label: op.label, extra: { members: op.ids.join(",") }, seq: env.seq };
+        if (placed.length) {
+          g.x = Math.min(...placed.map((k) => k.x!)); g.y = Math.min(...placed.map((k) => k.y!));
+          g.w = Math.max(...placed.map((k) => k.x! + (k.w ?? 0))) - g.x; g.h = Math.max(...placed.map((k) => k.y! + (k.h ?? 0))) - g.y;
+        }
+        els.set(id!, g);
+        break;
+      }
+      case "lock": for (const lid of op.ids as string[]) { const e = els.get(lid); if (e) { if (op.locked === false) delete e.extra.locked; else e.extra.locked = true; } } break;
       case "move": { const e = els.get(op.id); if (e) { e.x = op.x; e.y = op.y; } break; }
       case "update": {
         const e = els.get(op.id);
@@ -171,7 +195,7 @@ async function replay(): Promise<{ seq: number; els: Map<string, El> }> {
         break;
       }
       case "say": if (op.id) els.set(op.id, { id: op.id, type: "say", label: op.text, extra: { target: op.target }, seq: env.seq }); break;
-      case "delete": els.delete(op.id); break;
+      case "delete": { const e = els.get(op.id); if (e?.type === "group") for (const m of String(e.extra.members ?? "").split(",")) els.delete(m); els.delete(op.id); break; }
       case "clear": els.clear(); break;
       default: break; // focus etc: no state
     }
@@ -407,7 +431,7 @@ server.registerTool("canvas_get_state", {
 }, wrap(async (a) => {
   const { seq, els } = await replay();
   const all = [...els.values()];
-  const list = a.include_annotations === false ? all.filter((e) => !["arrow", "annotation"].includes(e.type)) : all;
+  const list = a.include_annotations === false ? all.filter((e) => !["arrow", "annotation", "draw", "highlighter", "highlight-box"].includes(e.type)) : all;
   if (!all.length) return `Canvas is empty (seq ${seq}). Free to start at (0,0).`;
   const placed = all.filter((e) => e.x != null);
   const minX = Math.min(...placed.map((e) => e.x!)), minY = Math.min(...placed.map((e) => e.y!));
@@ -417,6 +441,7 @@ server.registerTool("canvas_get_state", {
     `Canvas seq ${seq}: ${counts}.`,
     placed.length ? `Bounds: x ${r0(minX)}..${r0(maxX)}, y ${r0(minY)}..${r0(maxY)}. Next free x to the right: ${r0(maxX + 160)}; next free y below: ${r0(maxY + 160)}.` : "",
     ...list.map(describe),
+    all.some((e) => e.type === "image" || e.type === "video") ? "Mark-up tip: to point at a spot on a screenshot/video, pass target=<its id> with at={fx,fy} (fractions 0..1 of the image, origin top-left) to canvas_arrow_to / canvas_add_text / canvas_highlight / canvas_draw. No pixel math needed; marks follow the image when it moves." : "",
   ].filter(Boolean).join("\n");
 }));
 
@@ -457,12 +482,252 @@ server.registerTool("canvas_layout_flow", {
 
 server.registerTool("canvas_batch", {
   description:
-    "Post several raw ops in one call (validated against the canvas op schema). Op shapes: add_image{id?,src,x,y,w?,h?,label?,step?} | add_video{id?,src,x,y,w?,h?,label?,autoplay?,seekTo?} | add_shape{id?,kind:rectangle|ellipse|line|text|note,x,y,w?,h?,text?,color?} | add_arrow{id?,from,to,label?,color?} | annotate{id?,target,box:{x,y,w,h in 0..1},label?,severity} | add_finding{id?,x,y,title,severity,expected?,actual?,verified?,target?,timestamp?} | update{id,props} | move{id,x,y} | delete{id} | focus{ids?|box?} | cursor{x,y,label?} | say{id?,text,target?|x?,y?} | clear{}. Give your own ids to ops that later ops reference (e.g. arrows). Note add_image here takes an already-hosted src URL (use canvas_add_screenshot to upload local files). Ops apply in order.",
+    "Post several raw ops in one call (validated against the canvas op schema). Op shapes: add_image{id?,src,x,y,w?,h?,label?,step?} | add_video{id?,src,x,y,w?,h?,label?,autoplay?,seekTo?} | add_shape{id?,kind:rectangle|ellipse|line|text|note,x,y,w?,h?,text?,color?} | add_arrow{id?,from,to,label?,color?} | annotate{id?,target,box:{x,y,w,h in 0..1},label?,severity} | add_finding{id?,x,y,title,severity,expected?,actual?,verified?,target?,timestamp?} | update{id,props} | move{id,x,y} | delete{id} | focus{ids?|box?} | cursor{x,y,label?} | say{id?,text,target?|x?,y?} | clear{} | draw{id?,points:[{x,y}] 2..500,color?,size?,style?:pen|highlighter,animate?,target?,space?:canvas|target} | arrow_to{id?,from,to (each: element id | {x,y} | {target,fx,fy,dx?,dy?}),label?,color?,bend?,size?,attach?} | highlight{id?,target,box:{x,y,w,h in 0..1},kind?:rectangle|ellipse,color?,label?,opacity?} | add_text{id?,text,x?,y?,w?,size?,color?,align?,font?,target?,at?:{fx,fy},offset?:{x,y}} | group{id?,ids,label?,ungroup?} | lock{ids,locked} | order{ids,to:front|back|forward|backward}. Prefer the dedicated canvas_draw / canvas_arrow_to / canvas_highlight / canvas_add_text tools for marking up screenshots (they explain the fraction coordinates). Give your own ids to ops that later ops reference (e.g. arrows). Note add_image here takes an already-hosted src URL (use canvas_add_screenshot to upload local files). Ops apply in order.",
   inputSchema: { ops: z.array(z.record(z.string(), z.unknown())).min(1).describe("Array of op objects, each with a `type`.") },
 }, wrap(async (a) => {
   const ops = validate(a.ops);
   const r = await postOps(ops);
   return `Posted ${ops.length} ops (seqs ${r.seqs.join(",") || "n/a"}). Ids: ${r.ids.join(", ") || "n/a"}.`;
+}));
+
+// ===================================================================================================
+// Mark-up tools: let an agent mark up the board like a human with a marker.
+// draw / arrow_to / highlight / add_text / group / lock / order. Additive block; keep separate.
+// ===================================================================================================
+
+const MARK_COLOR = z.enum(["black", "grey", "white", "red", "orange", "yellow", "green", "blue", "violet", "light-red", "light-green", "light-blue", "light-violet"]);
+const STROKE_SIZE = z.enum(["s", "m", "l", "xl"]);
+const pointArg = z.object({ x: z.number(), y: z.number() });
+const atArg = z.object({
+  fx: z.number().min(-1).max(2).describe("Horizontal position as a fraction of the target's width: 0 = left edge, 1 = right edge."),
+  fy: z.number().min(-1).max(2).describe("Vertical position as a fraction of the target's height: 0 = top edge, 1 = bottom edge."),
+});
+const FRACTION_HELP =
+  "FRACTIONS: a spot on a screenshot is (fx,fy) = (px_x / W, px_y / H), where px_x/px_y is where you see it in the screenshot's own pixels and W x H is the screenshot's full size. Example: a button centred at (195,768) in a 390x844 screenshot -> {fx:0.5, fy:0.91}. Fractions are resolved by the canvas against the image's real on-screen size, so you never need canvas pixels, and the mark stays on that spot when the image is moved. (Manual alternative: canvas_x = element.x + fx * element.w from canvas_get_state, but sizes marked 'estimated' there are guesses, so prefer fractions.)";
+
+// deterministic wobble so presets look hand-drawn but are reproducible per id
+function rng(seed: string) {
+  let h = 2166136261;
+  for (const c of seed) h = Math.imul(h ^ c.charCodeAt(0), 16777619);
+  return () => ((h = Math.imul(h ^ (h >>> 15), 2246822507)), ((h ^ (h >>> 13)) >>> 0) / 4294967296 - 0.5);
+}
+type Box = { x: number; y: number; w: number; h: number };
+const DRAW_SHAPES = ["circle", "box", "underline", "strike", "check", "cross"] as const;
+function presetStrokes(shape: (typeof DRAW_SHAPES)[number], b: Box, seed: string): { x: number; y: number }[][] {
+  const r = rng(seed);
+  const j = Math.min(b.w, b.h) * 0.018; // jitter amplitude
+  const p = (x: number, y: number) => ({ x: x + r() * 2 * j, y: y + r() * 2 * j });
+  switch (shape) {
+    case "circle": {
+      const cx = b.x + b.w / 2, cy = b.y + b.h / 2, n = 30, a0 = -Math.PI * 0.6, sweep = Math.PI * 2.18;
+      return [Array.from({ length: n + 1 }, (_, i) => {
+        const t = i / n, a = a0 + sweep * t, grow = 1 + 0.05 * t; // slight spiral: the end overshoots the start like a real loop
+        return p(cx + Math.cos(a) * (b.w / 2) * 1.04 * grow, cy + Math.sin(a) * (b.h / 2) * 1.04 * grow);
+      })];
+    }
+    case "box": {
+      const { x, y, w, h } = b;
+      return [[p(x + 0.1 * w, y), p(x + 0.5 * w, y - 0.01 * h), p(x + w, y + 0.01 * h), p(x + w + 0.01 * w, y + 0.5 * h), p(x + w, y + h), p(x + 0.5 * w, y + h + 0.01 * h), p(x, y + h), p(x - 0.01 * w, y + 0.5 * h), p(x + 0.01 * w, y - 0.03 * h), p(x + 0.16 * w, y - 0.01 * h)]];
+    }
+    case "underline":
+      return [Array.from({ length: 7 }, (_, i) => p(b.x + (b.w * i) / 6, b.y + b.h + (i % 2 ? 1 : -1) * j))];
+    case "strike":
+      return [Array.from({ length: 6 }, (_, i) => p(b.x + (b.w * i) / 5, b.y + b.h / 2))];
+    case "check":
+      return [[p(b.x + 0.1 * b.w, b.y + 0.55 * b.h), p(b.x + 0.38 * b.w, b.y + 0.88 * b.h), p(b.x + 0.62 * b.w, b.y + 0.5 * b.h), p(b.x + 0.92 * b.w, b.y + 0.1 * b.h)]];
+    case "cross":
+      return [
+        [p(b.x, b.y), p(b.x + b.w * 0.5, b.y + b.h * 0.5), p(b.x + b.w, b.y + b.h)],
+        [p(b.x + b.w, b.y), p(b.x + b.w * 0.5, b.y + b.h * 0.5), p(b.x, b.y + b.h)],
+      ];
+  }
+}
+
+server.registerTool("canvas_draw", {
+  description:
+    "Draw with a marker on the board, like a human annotating a screenshot: a freehand stroke (circle something, underline a word, tick or cross a thing, sketch an outline) or a translucent highlighter swipe. " +
+    "TWO WAYS TO GIVE THE STROKE: (A) `shape` + `box`: a ready-made hand-drawn mark, one of circle | box | underline | strike | check | cross, fitted into `box` {x,y,w,h}; this is the easiest and looks best, so prefer it for the common marks. (B) `points`: your own path of 2..500 points, a polyline that is smoothed into a curve (an 8-point loop becomes a round circle). " +
+    "COORDINATES: canvas pixels by default (origin top-left, +x right, +y down, same space as canvas_get_state). If you pass `target` (the id of a screenshot/video), all coordinates (points or box) are instead FRACTIONS (0..1) of that target, so you can mark a screenshot without pixel math, and the mark is attached to it (moves with it). " +
+    FRACTION_HELP +
+    " Typical: circle a button -> {shape:'circle', target:'login', box:{x:0.1,y:0.86,w:0.8,h:0.08}, color:'red'}. style 'highlighter' makes a wide translucent swipe (e.g. over a line of text) instead of a pen line; animate:true draws it in progressively so the human can watch. Colors: red is the default pen colour, yellow the default highlighter colour. Returns the element id (use canvas_delete to remove, canvas_lock to protect).",
+  inputSchema: {
+    shape: z.enum(DRAW_SHAPES).optional().describe("Preset hand-drawn mark fitted into `box`. 'cross' draws an X (two strokes)."),
+    box: z.object({ x: z.number(), y: z.number(), w: z.number().positive(), h: z.number().positive() }).optional().describe("Region for `shape`: canvas px, or fractions of `target` when target is set. Estimate generously; a circle is drawn slightly outside the box."),
+    points: z.array(pointArg).min(2).max(500).optional().describe("Custom path [{x,y},...]. Canvas px, or fractions of `target` when target is set. Alternative to shape+box."),
+    target: idArg.optional().describe("Id of the screenshot/video these coordinates are relative to (fractions 0..1). Also attaches the stroke so it follows the target."),
+    space: z.enum(["canvas", "target"]).optional().describe("Override the coordinate space. Default: 'target' when `target` is given, otherwise 'canvas'. Use 'canvas' with `target` to give canvas px but still attach to the target."),
+    color: MARK_COLOR.optional().describe("Default red (pen) / yellow (highlighter)."),
+    size: STROKE_SIZE.optional().describe("Stroke thickness; default m."),
+    style: z.enum(["pen", "highlighter"]).optional().describe("pen (default) or highlighter (wide, translucent)."),
+    animate: z.boolean().optional().describe("Draw the stroke in progressively (replayed live; skipped when the board is reloaded). Default false."),
+    id: OPTIONAL_ID,
+  },
+}, wrap(async (a) => {
+  const id = a.id ?? rid("draw");
+  const space = a.space ?? (a.target ? "target" : "canvas");
+  let strokes: { x: number; y: number }[][];
+  if (a.shape) {
+    if (!a.box) throw new CanvasError(`shape '${a.shape}' needs a box {x,y,w,h} (${space === "target" ? "fractions 0..1 of the target" : "canvas px"}).`);
+    strokes = presetStrokes(a.shape, a.box, id);
+  } else {
+    if (!a.points) throw new CanvasError("Provide either shape + box, or points.");
+    strokes = [a.points];
+  }
+  if (space === "target") {
+    if (!a.target) throw new CanvasError("space 'target' needs `target` (the screenshot id).");
+    const bad = strokes.flat().find((q) => Math.abs(q.x) > 3 || Math.abs(q.y) > 3);
+    if (bad) throw new CanvasError(`Point (${bad.x},${bad.y}) is not a fraction. With target set, coordinates are 0..1 of the target (x = px_x / image width, y = px_y / image height). For canvas pixels leave target out, or pass space:'canvas'.`);
+  }
+  const ops = strokes.map((pts, i) => ({
+    type: "draw", id: i ? `${id}-${i + 1}` : id, points: pts, color: a.color, size: a.size, style: a.style, animate: a.animate,
+    target: a.target, space: a.target ? space : undefined,
+  }));
+  const r = await postOps(validate(ops));
+  const ids = ops.map((o) => o.id);
+  return `Drew ${a.shape ?? `${a.style ?? "pen"} stroke`}${a.target ? ` on ${a.target}` : ""}: id=${r.ids[0] ?? ids[0]}${ids.length > 1 ? ` (also ${ids.slice(1).join(", ")})` : ""}.`;
+}));
+
+const DIRS: Record<string, [number, number]> = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0], "up-left": [-0.7071, -0.7071], "up-right": [0.7071, -0.7071], "down-left": [-0.7071, 0.7071], "down-right": [0.7071, 0.7071] };
+const onTargetArg = z.object({ target: idArg, fx: z.number(), fy: z.number() });
+
+server.registerTool("canvas_arrow_to", {
+  description:
+    "Draw an arrow that points at something: a raw canvas point, a spot on a screenshot, or another element. Unlike canvas_add_arrow (which only links two existing element ids), each end here can be (1) an element id (attached, follows it), (2) a canvas point {x,y} in px, or (3) a spot on a screenshot given as {target, fx, fy} fractions. " +
+    "EASIEST FORM for pointing at a screenshot: pass `target` + `at` (the tip lands on that spot) and optionally `label`; with no `from` the tail starts `tail` px away in direction `from_dir` (default up-left), leaving room for the label. To point FROM a note/finding TO a spot on a screenshot: from:'<note id>', target:'<screenshot id>', at:{fx,fy}. " +
+    FRACTION_HELP +
+    " Free ends that were placed relative to a screenshot move with it; ends given as ids stay glued to those elements. `bend` curves the arrow (px of sideways arc, positive/negative = which side; default straight). Returns the arrow id.",
+  inputSchema: {
+    target: idArg.optional().describe("Screenshot/video id the tip points at (use with `at`). Convenience for to:{target,fx,fy}."),
+    at: atArg.optional().describe("Fractions of `target` where the arrow tip lands."),
+    to: z.union([idArg, pointArg, onTargetArg]).optional().describe("Arrow tip: an element id, a canvas point {x,y}, or {target,fx,fy}. Not needed if target+at is given."),
+    from: z.union([idArg, pointArg, onTargetArg]).optional().describe("Arrow tail: an element id, a canvas point {x,y}, or {target,fx,fy}. Omit to start the tail `tail` px away from the tip."),
+    from_dir: z.enum(["up", "down", "left", "right", "up-left", "up-right", "down-left", "down-right"]).optional().describe("Direction from the tip towards the tail when `from` is omitted. Default up-left."),
+    tail: z.number().positive().optional().describe("Tail length in canvas px when `from` is omitted. Default 140, longer when a label is given. A label wraps when it is wider than the arrow, so allow ~18px per label character."),
+    label: z.string().optional().describe("Short text on the arrow, e.g. 'this is dead'."),
+    color: MARK_COLOR.optional().describe("Default red."),
+    bend: z.number().optional().describe("Curvature in px (0 = straight)."),
+    size: STROKE_SIZE.optional(),
+    id: OPTIONAL_ID,
+  },
+}, wrap(async (a) => {
+  const id = a.id ?? rid("arrow");
+  let to: unknown = a.to;
+  if (a.target || a.at) {
+    if (!a.target || !a.at) throw new CanvasError("target and at must be given together (at = {fx,fy} fractions of the target).");
+    to = { target: a.target, fx: a.at.fx, fy: a.at.fy };
+  }
+  if (to === undefined) throw new CanvasError("Say where the arrow points: target+at, or to (element id / {x,y} / {target,fx,fy}).");
+  let from: unknown = a.from;
+  if (from === undefined) {
+    const [ux, uy] = DIRS[a.from_dir ?? "up-left"], len = a.tail ?? (a.label ? Math.min(420, Math.max(140, 60 + 18 * a.label.length)) : 140); // long enough that the label does not wrap
+    if (typeof to === "string") throw new CanvasError("Pointing at an element id needs a `from` (a tail position can only be derived for a point or a spot on a screenshot).");
+    const t = to as { x?: number; y?: number; target?: string; fx?: number; fy?: number };
+    from = t.target ? { target: t.target, fx: t.fx, fy: t.fy, dx: Math.round(ux * len), dy: Math.round(uy * len) } : { x: t.x! + ux * len, y: t.y! + uy * len };
+  }
+  const [op] = validate([{ type: "arrow_to", id, from, to, label: a.label, color: a.color, bend: a.bend, size: a.size }]);
+  const r = await postOps([op]);
+  return `Added arrow id=${r.ids[0] ?? id} pointing at ${a.target ? `${a.target} (${a.at!.fx},${a.at!.fy})` : JSON.stringify(to)}.`;
+}));
+
+server.registerTool("canvas_highlight", {
+  description:
+    "Soft 'look here' emphasis: a translucent coloured wash over a region of a screenshot/video, like a highlighter pen (no border label tab like canvas_annotate; for bugs/severity use canvas_annotate instead). Region is a `box` in FRACTIONS (0..1) of the target: x=px_x/W, y=px_y/H, w=px_w/W, h=px_h/H. " +
+    "Shortcut for a spot: give `at` (the centre, fractions) plus optional `w`,`h` fractions (default 0.2 x 0.1) instead of a box. kind:'ellipse' makes a round spotlight (the 'circle' convenience). Optional `label` appears in a small pill under it. The highlight re-fits itself if the screenshot is resized or moved. " +
+    FRACTION_HELP +
+    " Example: highlight a price line -> {target:'cart', box:{x:0.05,y:0.52,w:0.9,h:0.06}, color:'yellow', label:'price hidden'}. Returns the id.",
+  inputSchema: {
+    target: idArg.describe("Id of the screenshot/video to highlight."),
+    box: z.object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1), w: z.number().min(0).max(1), h: z.number().min(0).max(1) }).optional().describe("Region as fractions of the target (x+w and y+h should be <= 1)."),
+    at: atArg.optional().describe("Centre of the region as fractions (use instead of box)."),
+    w: z.number().positive().max(1).optional().describe("With `at`: width as a fraction of the target (default 0.2)."),
+    h: z.number().positive().max(1).optional().describe("With `at`: height as a fraction of the target (default 0.1)."),
+    kind: z.enum(["rectangle", "ellipse"]).optional().describe("rectangle (default) or ellipse (round spotlight)."),
+    color: MARK_COLOR.optional().describe("Default yellow."),
+    label: z.string().optional().describe("Short caption shown under the highlight."),
+    opacity: z.number().min(0.05).max(1).optional().describe("Fill strength, default 0.38."),
+    id: OPTIONAL_ID,
+  },
+}, wrap(async (a) => {
+  let box = a.box;
+  if (!box) {
+    if (!a.at) throw new CanvasError("Provide box {x,y,w,h} (fractions of the target) or at {fx,fy}.");
+    const w = a.w ?? 0.2, h = a.h ?? 0.1;
+    box = { x: Math.max(0, a.at.fx - w / 2), y: Math.max(0, a.at.fy - h / 2), w, h };
+  }
+  if (box.x + box.w > 1.001 || box.y + box.h > 1.001) throw new CanvasError(`box extends outside the target: x+w=${(box.x + box.w).toFixed(3)}, y+h=${(box.y + box.h).toFixed(3)} (both must be <= 1). Values are fractions of the target, not pixels.`);
+  const id = a.id ?? rid("hl");
+  const [op] = validate([{ type: "highlight", id, target: a.target, box, kind: a.kind, color: a.color, label: a.label, opacity: a.opacity }]);
+  const r = await postOps([op]);
+  return `Added ${a.kind ?? "rectangle"} highlight id=${r.ids[0] ?? id} on ${a.target}.`;
+}));
+
+server.registerTool("canvas_add_text", {
+  description:
+    "Put a text label on the board, in a handwritten marker font by default. Two ways to place it: (1) canvas px: x,y = the top-left of the text box (same space as canvas_get_state). (2) anchored to an element: pass `target` (screenshot/finding/shape id) and optionally `at` {fx,fy} (a spot on the target as fractions of its size; default its top-left corner) and `offset` {x,y} in px added to that spot (default: just above the top-left when there is no `at`). An anchored label moves with its target when the target is moved, so captions never get left behind. " +
+    FRACTION_HELP +
+    " Example: caption beside a screenshot's right edge -> {text:'Error banner covers the CTA', target:'cart', at:{fx:1,fy:0.8}, offset:{x:24,y:0}, color:'red'}. Set `w` to wrap long text and to align it with `align` (start|middle|end) inside that width. Returns the id. For sticky notes use canvas_add_shape kind:'note'.",
+  inputSchema: {
+    text: z.string().min(1).describe("The label text."),
+    x: z.number().optional().describe("Canvas x of the text box's top-left (omit when anchoring with target)."),
+    y: z.number().optional().describe("Canvas y of the text box's top-left."),
+    w: z.number().positive().optional().describe("Fixed box width in px; text wraps inside it. Omit for auto width."),
+    size: STROKE_SIZE.optional().describe("s ~18px, m ~24px (default), l ~36px, xl ~44px."),
+    color: MARK_COLOR.optional().describe("Default black."),
+    align: z.enum(["start", "middle", "end"]).optional().describe("Text alignment within the box (most useful with w)."),
+    font: z.enum(["draw", "sans", "serif", "mono"]).optional().describe("draw = handwritten (default), sans, serif, mono."),
+    target: idArg.optional().describe("Element to anchor the label to; it then moves with it."),
+    at: atArg.optional().describe("With target: spot on it as fractions where the label's top-left goes."),
+    offset: pointArg.optional().describe("Extra px offset from the anchor spot (can be negative)."),
+    id: OPTIONAL_ID,
+  },
+}, wrap(async (a) => {
+  if (!a.target && (a.x == null || a.y == null)) throw new CanvasError("Give x and y (canvas px), or a target to anchor the text to.");
+  if (a.at && !a.target) throw new CanvasError("`at` needs a `target`.");
+  const id = a.id ?? rid("text");
+  const [op] = validate([{ type: "add_text", id, text: a.text, x: a.x, y: a.y, w: a.w, size: a.size, color: a.color, align: a.align, font: a.font, target: a.target, at: a.at, offset: a.offset }]);
+  const r = await postOps([op]);
+  return `Added text id=${r.ids[0] ?? id} "${a.text.length > 40 ? a.text.slice(0, 37) + "..." : a.text}"${a.target ? ` anchored to ${a.target}` : ` at (${a.x},${a.y})`}.`;
+}));
+
+server.registerTool("canvas_group", {
+  description:
+    "Group existing elements (screenshots, notes, strokes, arrows, text...) so they move/select as one, e.g. a screenshot plus all its marks, or one finished flow. Optional `label` adds a title above the group (it follows the group). The group gets its own id (returned), usable with canvas_move, canvas_lock, canvas_order and canvas_delete (deleting a group deletes its members). To break a group apart set ungroup:true and pass the GROUP id in ids. Needs at least 2 existing ids.",
+  inputSchema: {
+    ids: z.array(idArg).min(1).describe("Element ids to group (or, with ungroup, the group id)."),
+    label: z.string().optional().describe("Title shown above the group."),
+    ungroup: z.boolean().optional().describe("Dissolve the group(s) named in ids instead of creating one."),
+    id: OPTIONAL_ID,
+  },
+}, wrap(async (a) => {
+  if (!a.ungroup && a.ids.length < 2) throw new CanvasError("Grouping needs at least 2 ids.");
+  const id = a.id ?? rid("group");
+  const [op] = validate([{ type: "group", id: a.ungroup ? undefined : id, ids: a.ids, label: a.label, ungroup: a.ungroup }]);
+  const r = await postOps([op]);
+  return a.ungroup ? `Ungrouped ${a.ids.join(", ")}.` : `Grouped ${a.ids.length} elements as id=${r.ids[0] ?? id}.`;
+}));
+
+server.registerTool("canvas_lock", {
+  description:
+    "Lock (or unlock) elements so a human cannot accidentally drag, resize or delete them: use it to protect finished work such as a completed screenshot with its marks. Locking an element also locks its caption/step badge. Your own tools (canvas_move/update/delete/clear) still work on locked elements; locks only guard against human edits.",
+  inputSchema: {
+    ids: z.array(idArg).min(1).describe("Element ids."),
+    locked: z.boolean().default(true).describe("true = lock (default), false = unlock."),
+  },
+}, wrap(async (a) => {
+  await postOps(validate([{ type: "lock", ids: a.ids, locked: a.locked }]));
+  return `${a.locked === false ? "Unlocked" : "Locked"} ${a.ids.join(", ")}.`;
+}));
+
+server.registerTool("canvas_order", {
+  description:
+    "Change stacking order (z-index): bring elements to the front so marks sit above screenshots, or send a big background shape/screenshot to the back. `to`: front | back | forward (one step) | backward (one step).",
+  inputSchema: {
+    ids: z.array(idArg).min(1).describe("Element ids to reorder."),
+    to: z.enum(["front", "back", "forward", "backward"]),
+  },
+}, wrap(async (a) => {
+  await postOps(validate([{ type: "order", ids: a.ids, to: a.to }]));
+  return `Moved ${a.ids.join(", ")} ${a.to === "front" || a.to === "back" ? `to the ${a.to}` : a.to}.`;
 }));
 
 async function main() {
