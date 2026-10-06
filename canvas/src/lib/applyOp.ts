@@ -323,7 +323,7 @@ const DOING: Partial<Record<Op["type"], string>> = {
 };
 
 /** Page point the agent avatar should glide to for an op (null = leave it where it is). */
-function agentSpot(editor: Editor, op: Op, seq: number, added: TLShapeId[]): { x: number; y: number; doing?: string } | null {
+function agentSpot(editor: Editor, op: Op, seq: number, added: TLShapeId[]): { x: number; y: number; doing?: string; speech?: boolean } | null {
   const doing = DOING[op.type];
   switch (op.type) {
     case "cursor":
@@ -337,7 +337,7 @@ function agentSpot(editor: Editor, op: Op, seq: number, added: TLShapeId[]): { x
     }
     case "say": {
       const s = editor.getShape(sid(("id" in op && op.id) || `op${seq}`)) as unknown as { x: number; y: number; props: { tipX: number; tipY: number } } | undefined;
-      return s ? { x: s.x + s.props.tipX, y: s.y + s.props.tipY, doing } : null;
+      return s ? { x: s.x + s.props.tipX, y: s.y + s.props.tipY, doing: op.text.length > 60 ? op.text.slice(0, 59) + "…" : op.text, speech: true } : null;
     }
     case "annotate": {
       const b = boundsOf(editor, added.filter((i) => editor.getShape(i)?.type === "annotation"));
@@ -400,7 +400,7 @@ export async function applyEnvelope(
     const spot = agentSpot(editor, op, env.seq, added);
     if (spot) {
       noteAgentSpot(spot.x, spot.y);
-      agentBus.moveTo(spot.x, spot.y, { instant: !animate, doing: spot.doing });
+      agentBus.moveTo(spot.x, spot.y, { instant: !animate, doing: spot.doing, speech: spot.speech });
     }
     const fading = added.filter((i) => !noFade.has(i));
     if (fading.length && animate) animateIn(editor, fading, 160);

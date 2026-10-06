@@ -115,8 +115,8 @@ function SpeechBody({ shape }: { shape: SpeechShape }) {
         </svg>
         <div ref={inner} style={{ position: "relative", padding: PAD }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
-            <img src={withBase("/ignura/iggy/iggy-mark.svg")} alt="" width={16} height={16} draggable={false} />
-            <span style={{ font: "500 12px/16px var(--f-pixel)", letterSpacing: ".04em", color: "var(--orange-deep)" }}>iggy says</span>
+            <img src={withBase("/ignura/astra/astra-mark.svg")} alt="" width={16} height={16} draggable={false} />
+            <span style={{ font: "500 12px/16px var(--f-pixel)", letterSpacing: ".04em", color: "var(--orange-deep)" }}>astra says</span>
           </div>
           <div style={{ font: "600 22px/24px var(--f-hand)", color: "var(--ink)", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{text}</div>
         </div>

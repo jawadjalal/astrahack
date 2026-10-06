@@ -30,9 +30,9 @@ export function EmptyState() {
   const curl = `curl -X POST ${endpoint} -H 'content-type: application/json' -d '{"type":"add_shape","kind":"note","x":0,"y":0,"text":"hello from my agent"}'`;
   return (
     <div className="ig-empty">
-      <img className="ig-empty-iggy" src={withBase("/ignura/iggy/iggy-waving.svg")} alt="" width={150} draggable={false} />
+      <img className="ig-empty-astra" src={withBase("/ignura/astra/astra.svg")} alt="" width={150} draggable={false} />
       <h1>
-        Waiting for your <em>agent</em>...
+        Waiting for your <em>agent<img className="ig-und" src={withBase("/ignura/doodles/underline-swoosh.svg")} alt="" draggable={false} /></em>...
       </h1>
       <p className="ig-empty-line">
         Point it here: run the <b>MCP server</b> (<code>canvas_*</code> tools) or <b>POST /api/ops</b>.

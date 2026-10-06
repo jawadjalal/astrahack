@@ -17,6 +17,7 @@ import { ActivityPanel } from "./ui/ActivityPanel";
 import { AgentAvatar } from "./ui/AgentAvatar";
 import { EmptyState } from "./ui/EmptyState";
 import { IguraStylePanel } from "./ui/IguraStylePanel";
+import { RoughDefs } from "./ui/RoughDefs";
 
 type Status = "connecting" | "connected" | "reconnecting";
 
@@ -33,6 +34,8 @@ const components: TLUiComponents = {
   QuickActions: null,
   KeyboardShortcutsDialog: null,
   HelperButtons: null,
+  ImageToolbar: null,
+  VideoToolbar: null,
   DebugPanel: null,
   DebugMenu: null,
   MenuPanel: null,
@@ -188,6 +191,7 @@ export default function Canvas() {
       data-present={present || undefined}
       style={{ position: "fixed", inset: 0 }}
     >
+      <RoughDefs />
       <Tldraw licenseKey={process.env.NEXT_PUBLIC_TLDRAW_LICENSE_KEY} shapeUtils={customShapeUtils} themes={themes} components={components} onMount={handleMount} />
 
       {editor && (
@@ -208,8 +212,8 @@ export default function Canvas() {
       )}
 
       <div className="ig-brand">
-        <img src={withBase("/ignura/iggy/iggy-mark.svg")} width={26} height={26} alt="" draggable={false} />
-        <span className="ig-brand-word">Ignura</span>
+        <img src={withBase("/ignura/astra/astra-mark.svg")} width={26} height={26} alt="" draggable={false} />
+        <span className="ig-brand-word">Astra</span>
         <span className={`ig-status is-${status}`} role="status">
           <i />
           {status === "connected" ? "live" : status === "reconnecting" ? "reconnecting" : "connecting"}

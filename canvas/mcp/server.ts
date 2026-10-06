@@ -392,7 +392,7 @@ server.registerTool("canvas_cursor", {
   inputSchema: {
     x: z.number().describe("Canvas x to glide to."),
     y: z.number().describe("Canvas y to glide to."),
-    label: z.string().max(40).optional().describe("Name tag next to the cursor, e.g. 'Iggy' or 'QA agent'. Sticks until changed."),
+    label: z.string().max(40).optional().describe("Name tag next to the cursor, e.g. 'Astra' or 'QA agent'. Sticks until changed."),
   },
 }, wrap(async (a) => {
   await postOps(validate([{ type: "cursor", x: a.x, y: a.y, label: a.label }]));
