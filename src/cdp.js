@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { findChrome } from './chrome-path.js';
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -79,7 +80,8 @@ export async function attach(port, target) {
 }
 
 export async function launchBrowser({ executable, headless = true, width = 1280, height = 800 }) {
-  if (!executable) throw new Error('Browser executable is required');
+  executable ||= findChrome();
+  if (!executable) throw new Error('No Chrome/Chromium found. Install Google Chrome, or set ASTRAHACK_CHROME=/path/to/chrome (run `npm run doctor` to see what was checked).');
   const profile = await mkdtemp(join(tmpdir(), 'astrahack-chrome-'));
   const args = [
     '--remote-debugging-port=0', `--user-data-dir=${profile}`,
@@ -98,7 +100,7 @@ export async function launchBrowser({ executable, headless = true, width = 1280,
     await sleep(100);
   }
   if (!port) {
-    if (!launchError && child.exitCode === null && child.signalCode === null) child.kill();
+    if (!launchError && child.exitCode === null && child.signalCode === null) child.kill('SIGKILL'); // a Chrome stuck at startup ignores SIGTERM
     await rm(profile, { recursive: true, force: true });
     throw new Error(`Chrome did not expose a CDP port. ${launchError?.message || 'Check the executable and launch permissions.'}`);
   }

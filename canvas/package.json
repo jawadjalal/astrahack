@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "eslint",
     "mcp": "tsx mcp/server.ts",
-    "mcp:test": "node mcp/test.mjs"
+    "mcp:test": "node mcp/test.mjs",
+    "test": "node --test \"test/*.test.mjs\"",
+    "smoke": "node scripts/smoke-server.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.1",

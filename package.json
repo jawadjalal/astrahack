@@ -8,7 +8,8 @@
   },
   "bin": {
     "astrahack": "./bin/astrahack.js",
-    "astrahack-qa": "./bin/qa.js"
+    "astrahack-qa": "./bin/qa.js",
+    "astrahack-ugc": "./bin/ugc.js"
   },
   "scripts": {
     "run": "node bin/astrahack.js",
@@ -18,6 +19,7 @@
     "test": "node --test test/*.test.js test/*.test.mjs agent/test/*.test.mjs",
     "check": "node --check generate.mjs && node --check lib/generate.mjs && node --check campaigns.mjs && node --check lib/campaigns.mjs",
     "campaigns": "node --env-file-if-exists=.env campaigns.mjs",
-    "worker": "node bin/web-worker.js"
+    "worker": "node bin/web-worker.js",
+    "ugc": "node --env-file-if-exists=.env bin/ugc.js"
   }
 }

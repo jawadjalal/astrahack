@@ -39,6 +39,7 @@ Options:
   --port N|off             steering/status server port (default $AGENT_PORT or 7788)
   --out DIR                output directory (default runs/teardown-<host>-<time>)
   --clear-canvas           wipe the canvas before streaming; --id-prefix P to namespace ids
+  --include-design         also keep usability/visual observations (category usability|visual, severity info). Default: functional bugs only
   --ack-safety-checks      auto-acknowledge OpenAI computer-use safety checks (default: stop for a human)
 
 Steer a running agent:  curl -s localhost:7788/steer -d '{"text":"skip onboarding, show me settings"}'
@@ -56,7 +57,7 @@ export function parseCli(argv, env = process.env) {
       record: { type: 'boolean', default: true }, headed: { type: 'boolean', default: false }, chrome: { type: 'string' }, ffmpeg: { type: 'string' }, viewport: { type: 'string', default: '1440x900' },
       'allow-host': { type: 'string', multiple: true, default: [] }, 'allow-risky': { type: 'boolean', default: false }, 'mac-app': { type: 'string' },
       port: { type: 'string' }, out: { type: 'string' }, 'clear-canvas': { type: 'boolean', default: false }, 'id-prefix': { type: 'string', default: '' },
-      'ack-safety-checks': { type: 'boolean', default: false }, help: { type: 'boolean', short: 'h', default: false }
+      'ack-safety-checks': { type: 'boolean', default: false }, 'include-design': { type: 'boolean', default: false }, help: { type: 'boolean', short: 'h', default: false }
     }
   });
   const int = (v, name, min, max) => {
@@ -82,7 +83,7 @@ export function parseCli(argv, env = process.env) {
     record: values.record, headed: values.headed, chrome: values.chrome || env.ASTRAHACK_CHROME, ffmpeg: values.ffmpeg || env.ASTRAHACK_FFMPEG,
     viewport: { width: Number(m[1]), height: Number(m[2]) }, allowHosts: values['allow-host'], allowRisky: values['allow-risky'], macApp: values['mac-app'],
     port: portRaw === 'off' ? 'off' : int(portRaw, 'port', 0, 65535), out: values.out, clearCanvas: values['clear-canvas'], idPrefix: values['id-prefix'],
-    ackSafetyChecks: values['ack-safety-checks']
+    ackSafetyChecks: values['ack-safety-checks'], includeDesign: values['include-design']
   };
 }
 
@@ -143,7 +144,7 @@ export async function main(argv, env = process.env) {
     status.state = 'running';
     report = await runTeardown({
       target: target || `electron app on CDP port ${opts.cdpPort}`, brief: opts.brief, backend, canvas, stop, inbox, recorder, outDir, sessionFactory,
-      maxSteps: opts.maxSteps, maxMinutes: opts.maxMinutes, verify: opts.verify, ackSafetyChecks: opts.ackSafetyChecks, env, log,
+      maxSteps: opts.maxSteps, maxMinutes: opts.maxMinutes, verify: opts.verify, ackSafetyChecks: opts.ackSafetyChecks, includeDesign: opts.includeDesign, env, log,
       model: opts.mock ? 'mock' : opts.model, backendName: opts.backend
     });
   } catch (error) {

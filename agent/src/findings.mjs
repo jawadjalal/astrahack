@@ -6,6 +6,8 @@
 // in the replay) and the model reported seeing it again on a fresh screenshot. Anything else is
 // verified:false with an explanation in `verification`.
 
+import { assessFinding, excludedSummary } from '../../src/findings-filter.js';
+
 export const SEVERITIES = ['critical', 'high', 'medium', 'low', 'info'];
 const SEVERITY_RANK = Object.fromEntries(SEVERITIES.map((s, i) => [s, i]));
 
@@ -23,9 +25,13 @@ const clip = (s, n) => String(s ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
 const titleKey = t => String(t).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
 export class FindingStore {
-  constructor() {
+  // Only FUNCTIONAL findings are kept (src/findings-filter.js). With includeDesign, usability and visual
+  // observations are kept too, at severity info. Everything refused is listed in `rejected` for the report.
+  constructor({ includeDesign = false } = {}) {
     this.items = [];
     this.nextId = 1;
+    this.includeDesign = includeDesign;
+    this.rejected = [];
   }
 
   // raw: model-provided args. ctx: harness-known facts (step, screenshot, timestamp, point/box).
@@ -35,6 +41,16 @@ export class FindingStore {
     const expected = clip(raw?.expected, 400);
     const actual = clip(raw?.actual, 400);
     if (!expected || !actual) throw new Error('finding needs both expected and actual behaviour');
+    const repro = (Array.isArray(raw.repro_steps) ? raw.repro_steps : []).map(x => clip(x, 200)).filter(Boolean).slice(0, 12);
+    // The harness attaches every finding to the screen it was recorded on, so the evidence step always exists.
+    const verdict = assessFinding({
+      summary: title, category: raw.category, severity: raw.severity, expected, actual, repro,
+      evidenceStep: Number.isInteger(ctx.stepIndex) ? ctx.stepIndex : 0, evidence: ctx.screenshot ?? undefined
+    }, { includeDesign: this.includeDesign });
+    if (!verdict.keep) {
+      this.rejected.push(excludedSummary({ finding: { summary: title }, category: verdict.category, reasons: verdict.reasons }));
+      throw new Error(`finding not recorded: ${verdict.reasons.join('; ')}. Only report observable broken behavior (a flow that cannot be completed, an action with no or the wrong effect, an error or blank screen, wrong or inconsistent data, bad validation, a dead link, lost state) with exact repro_steps.`);
+    }
     const existing = this.items.find(f => titleKey(f.title) === titleKey(title));
     if (existing) {
       // same issue reported twice: keep the earliest, upgrade severity if the new report is worse.
@@ -45,7 +61,8 @@ export class FindingStore {
     const finding = {
       id: `F${this.nextId++}`,
       title,
-      severity: normalizeSeverity(raw.severity),
+      category: verdict.category,
+      severity: verdict.category === 'functional' ? normalizeSeverity(raw.severity) : 'info',
       expected,
       actual,
       stepIndex: Number.isInteger(ctx.stepIndex) ? ctx.stepIndex : 0,

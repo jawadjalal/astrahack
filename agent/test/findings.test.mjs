@@ -126,3 +126,27 @@ test('coverage lists visited and unreachable screens without double counting', (
   assert.deepEqual(j.visited.map(v => v.screen).sort(), ['Home', 'http://x.test/home']);
   assert.throws(() => cov.note({ screen: ' ', status: 'visited' }), /screen name/);
 });
+
+test('design opinions are refused with a reason and listed in rejected, never stored', () => {
+  const store = new FindingStore();
+  assert.throws(() => store.add(raw({ title: 'Landing headline might have a typo', expected: 'Flawless copy', actual: 'I thought instantly looked odd' }), ctx), /design or taste opinion/);
+  assert.throws(() => store.add(raw({ title: 'Button color is off-brand', actual: 'Looks green', category: 'visual' }), ctx), /design observation/);
+  assert.equal(store.items.length, 0);
+  assert.equal(store.rejected.length, 2);
+  assert.equal(store.rejected[0].category, 'visual');
+});
+
+test('a finding without repro steps is refused', () => {
+  const store = new FindingStore();
+  assert.throws(() => store.add(raw({ repro_steps: [] }), ctx), /reproduction steps/);
+  assert.equal(store.items.length, 0);
+});
+
+test('functional findings carry category functional; includeDesign keeps design ones at severity info', () => {
+  const strict = new FindingStore();
+  assert.equal(strict.add(raw({ category: 'functional' }), ctx).finding.category, 'functional');
+  const wide = new FindingStore({ includeDesign: true });
+  const { finding } = wide.add(raw({ title: 'Heading font looks dated', category: 'visual', severity: 'high', actual: 'Looks dated' }), ctx);
+  assert.equal(finding.category, 'visual');
+  assert.equal(finding.severity, 'info');
+});

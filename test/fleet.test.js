@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { defaultFleetConcurrency, planFleet, runFleet } from '../src/fleet.js';
+import { findChrome } from '../src/chrome-path.js';
 
 const page = (url, controls = []) => ({
   url, finalUrl: url, status: 'visited', screenshot: 'screenshots/page.png',
@@ -37,10 +37,10 @@ test('default parallelism scales with available memory, CPUs, and planned work',
 });
 
 test('fleet launches separate real browser sessions for discovered pages', {
-  skip: !existsSync(process.env.ASTRAHACK_CHROME || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome')
+  skip: !findChrome()
 }, async () => {
   const output = await mkdtemp(join(tmpdir(), 'astrahack-fleet-browser-'));
-  const chrome = process.env.ASTRAHACK_CHROME || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+  const chrome = findChrome();
   try {
     await writeFile(join(output, 'home.html'), '<title>Home</title><h1>Home</h1><a href="feature.html">Feature</a>');
     await writeFile(join(output, 'feature.html'), '<title>Feature</title><h1>Feature</h1>');
