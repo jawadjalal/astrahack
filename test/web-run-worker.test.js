@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { once } from 'node:events';
 import { setTimeout as delay } from 'node:timers/promises';
+import { isolatedVmChromeFlags } from '../src/cdp.js';
 import { createRunClient, publicAddress, runWorker, validatePublicTarget, workerPreflight } from '../src/web-run-worker.js';
 
 test('public target validation rejects private DNS answers, alternate IP encodings and unsupported targets', async () => {
@@ -119,4 +120,40 @@ test('shutdown interrupts active pipeline and stores failure without taking anot
     assert.equal(states.at(-1).status, 'failed');
     assert.match(states.at(-1).message, /interrupted/);
   } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test('--run-id claims only the named run, ignores the rest of the queue, and exits', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'astra-web-worker-runid-'));
+  const paths = [];
+  const target = { id: 'target-run', url: 'https://customer.example' };
+  try {
+    const result = await runWorker({ runId: target.id, once: false, canvasUrl: 'https://canvas.example', outputRoot: directory, log: () => {},
+      validateTarget: async url => url,
+      request: async (path, options) => {
+        paths.push(`${options?.method || 'GET'} ${path}`);
+        if (path.endsWith('/claim')) return { run: target };
+        return { run: target };
+      }, pipeline: async () => ({ status: 'completed', message: 'Done.' }) });
+    assert.deepEqual(result, { processed: 1 });
+    assert.ok(!paths.includes('GET '), 'must not list the queue');
+    assert.ok(paths.every(path => path.includes('/target-run')));
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test('--run-id exits quietly when another worker already claimed the run', async () => {
+  let pipelines = 0;
+  const logs = [];
+  const result = await runWorker({ runId: 'taken-run', canvasUrl: 'https://canvas.example', log: line => logs.push(line),
+    request: async path => { if (path.endsWith('/claim')) throw Object.assign(new Error('conflict'), { status: 409 }); throw new Error('unexpected'); },
+    pipeline: async () => { pipelines++; return { status: 'completed' }; } });
+  assert.deepEqual(result, { processed: 0 });
+  assert.equal(pipelines, 0);
+  assert.match(logs.join('\n'), /already claimed/);
+  await assert.rejects(runWorker({ runId: '../x', canvasUrl: 'https://canvas.example', request: async () => ({}) }), /Invalid run ID/);
+});
+
+test('Chrome no-sandbox flags are opt-in only', () => {
+  assert.deepEqual(isolatedVmChromeFlags({}), []);
+  assert.deepEqual(isolatedVmChromeFlags({ ASTRAHACK_CHROME_NO_SANDBOX: '0' }), []);
+  assert.ok(isolatedVmChromeFlags({ ASTRAHACK_CHROME_NO_SANDBOX: '1' }).includes('--no-sandbox'));
 });

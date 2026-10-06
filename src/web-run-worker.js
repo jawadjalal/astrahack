@@ -123,16 +123,21 @@ export function executePipelineProcess(job, { signal, onProgress, ...options }) 
   });
 }
 
+/** `runId` targets one specific queued run (the cloud dispatcher passes it): the worker claims only that run and then exits. */
 export async function runWorker({ canvasUrl, token, chrome, signal, outputRoot = join(root, 'runs'),
   workerId = `${hostname().replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 30)}-${randomUUID()}`,
-  pollMs = 3_000, heartbeatMs = 15_000, once = false, log = console.log,
+  pollMs = 3_000, heartbeatMs = 15_000, once = false, runId, log = console.log,
   request = createRunClient({ canvasUrl, token }), pipeline = executePipelineProcess,
   validateTarget = validatePublicTarget, sleep = delay } = {}) {
+  if (runId !== undefined) {
+    if (!/^[A-Za-z0-9_-]{1,80}$/.test(runId || '')) throw new Error('Invalid run ID.');
+    once = true;
+  }
   const attempts = new Set();
   let processed = 0;
   while (!signal?.aborted) {
     let queued;
-    try { queued = await request('', { signal }); }
+    try { queued = runId ? { runs: [{ id: runId }] } : await request('', { signal }); }
     catch (error) {
       if (signal?.aborted) break;
       if ([401, 403].includes(error.status)) throw new Error('Worker authentication was rejected; check ASTRAHACK_WORKER_TOKEN.');
@@ -147,7 +152,8 @@ export async function runWorker({ canvasUrl, token, chrome, signal, outputRoot =
       let job;
       try { ({ run: job } = await request(`/${encodeURIComponent(queuedRun.id)}/claim`, { method: 'POST', body: { workerId }, signal })); }
       catch (error) {
-        if (error.status === 409) continue;
+        if (error.status === 409) { if (runId) log('This run was already claimed by another worker; nothing to do.'); continue; }
+        if (runId && error.status === 404) { log('This run no longer exists; nothing to do.'); continue; }
         // A lost claim response is uncertain: do not try to claim or execute it again in this process.
         attempts.add(queuedRun.id);
         log('A run claim could not be confirmed; it will not be executed automatically.');

@@ -4,7 +4,7 @@ import { findChrome } from '../src/chrome-path.js';
 
 try { process.loadEnvFile('.env'); } catch (error) { if (error.code !== 'ENOENT') throw error; }
 
-const usage = 'Usage: node bin/web-worker.js [--once]\nSet CANVAS_URL, ASTRAHACK_WORKER_TOKEN, ASTRAHACK_CHROME, and OPENAI_API_KEY in your environment or .env.';
+const usage = 'Usage: node bin/web-worker.js [--once] [--run-id <id>]\n--run-id claims only that queued run, then exits (used by the cloud dispatcher).\nSet CANVAS_URL, ASTRAHACK_WORKER_TOKEN, ASTRAHACK_CHROME, and OPENAI_API_KEY in your environment or .env.';
 const stop = new AbortController();
 let stopping = false;
 const shutdown = () => {
@@ -20,7 +20,14 @@ try {
   const args = process.argv.slice(2);
   if (args.includes('--help')) console.log(usage);
   else {
-    if (args.some(arg => arg !== '--once')) throw new Error(usage);
+    let runId;
+    const flags = [];
+    for (let i = 0; i < args.length; i++) {
+      if (args[i] === '--run-id') runId = args[++i];
+      else if (args[i].startsWith('--run-id=')) runId = args[i].slice('--run-id='.length);
+      else flags.push(args[i]);
+    }
+    if (flags.some(arg => arg !== '--once') || (runId !== undefined && !/^[A-Za-z0-9_-]{1,80}$/.test(runId || ''))) throw new Error(usage);
     const options = {
       canvasUrl: process.env.CANVAS_URL || 'https://ignura.com/astrahack',
       token: process.env.ASTRAHACK_WORKER_TOKEN,
@@ -28,7 +35,7 @@ try {
     };
     await workerPreflight(options);
     console.log('Worker ready. Waiting for website URLs.');
-    await runWorker({ ...options, signal: stop.signal, once: args.includes('--once') });
+    await runWorker({ ...options, signal: stop.signal, once: args.includes('--once'), runId });
   }
 } catch (error) {
   // Errors emitted by this entry point and the worker client contain no provider response bodies.

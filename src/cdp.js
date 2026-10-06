@@ -79,6 +79,11 @@ export async function attach(port, target) {
   return cdp;
 }
 
+/** Opt-in (ASTRAHACK_CHROME_NO_SANDBOX=1) for isolated Linux VMs where Chrome's own sandbox cannot start. Off by default. */
+export function isolatedVmChromeFlags(env = process.env) {
+  return env.ASTRAHACK_CHROME_NO_SANDBOX === '1' ? ['--no-sandbox', '--disable-dev-shm-usage'] : [];
+}
+
 export async function launchBrowser({ executable, headless = true, width = 1280, height = 800 }) {
   executable ||= findChrome();
   if (!executable) throw new Error('No Chrome/Chromium found. Install Google Chrome, or set ASTRAHACK_CHROME=/path/to/chrome (run `npm run doctor` to see what was checked).');
@@ -90,6 +95,7 @@ export async function launchBrowser({ executable, headless = true, width = 1280,
     `--window-size=${width},${height}`, 'about:blank'
   ];
   if (headless) args.unshift('--headless=new', '--disable-gpu');
+  args.unshift(...isolatedVmChromeFlags());
   const child = spawn(executable, args, { stdio: 'ignore' });
   let launchError;
   child.on('error', error => { launchError = error; });
