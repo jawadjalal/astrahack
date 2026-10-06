@@ -73,7 +73,9 @@ test('fleet report keeps global action evidence tied to the correct worker and m
     await writeFile(join(dir, 'workers/A001/screenshots/001-click.png'), 'image');
     const request = async () => ({ output: [{ type: 'message', content: [{ type: 'output_text', text: JSON.stringify({ productSummary: 'Demo', observedFeatures: [], candidateFindings: [], limitations: [] }) }] }] });
     const { report } = await analyzeQa(dir, { request, includeImages: false });
-    assert.deepEqual(report.findings.map(f => f.verification), ['unverified', 'agent_reported', 'unverified']);
+    // issues that cite another worker's action or screenshot have no real evidence, so they are left out of the findings
+    assert.deepEqual(report.findings.map(f => f.verification), ['agent_reported']);
+    assert.deepEqual(report.excludedFindings.map(f => f.summary).sort(), ['Wrong screenshot', 'Wrong worker']);
     assert.deepEqual(report.findings.find(f => f.summary === 'Missing panel').evidenceRefs, ['Q001']);
     assert.equal(report.evidence.find(e => e.id === 'Q002').detail.mission, 'controls');
     assert.equal(report.evidence.find(e => e.id === 'Q002').screenshot, null);
@@ -108,7 +110,7 @@ test('large fleet keeps every recorded issue while bounding model evidence', asy
     const steps = Array.from({ length: 300 }, (_, i) => ({ index: i + 1, workerId: `A${String(Math.floor(i / 5) + 1).padStart(3, '0')}`, type: 'click', status: 'passed', observation: { url: `https://example.test/p${i % 80}` } }));
     const workers = Array.from({ length: 60 }, (_, i) => ({ id: `A${String(i + 1).padStart(3, '0')}`, mission: 'journey', url: `https://example.test/p${i}`, status: 'completed' }));
     await writeFile(join(dir, 'crawl.json'), JSON.stringify({ target: 'https://example.test/', pages, findings: [{ type: 'http_error', severity: 'high', url: 'https://example.test/bad', actual: 'HTTP 404' }] }));
-    await writeFile(join(dir, 'qa-agent.json'), JSON.stringify({ target: 'https://example.test/', status: 'completed', workers, steps, assessment: { issues: [{ summary: 'No response', severity: 'medium', expected: 'Opens', actual: 'Nothing', reproduction: [], workerId: 'A060', evidenceStep: 300 }] } }));
+    await writeFile(join(dir, 'qa-agent.json'), JSON.stringify({ target: 'https://example.test/', status: 'completed', workers, steps, assessment: { issues: [{ summary: 'No response', severity: 'medium', expected: 'Opens', actual: 'Nothing', reproduction: ['Click the control'], workerId: 'A060', evidenceStep: 300 }] } }));
     let sent;
     const request = async payload => { sent = JSON.parse(payload.input[1].content[0].text); return { output: [{ type: 'message', content: [{ type: 'output_text', text: JSON.stringify({ productSummary: '', observedFeatures: [], candidateFindings: [], limitations: [] }) }] }] }; };
     const { report } = await analyzeQa(dir, { request, includeImages: false });
@@ -130,8 +132,11 @@ test('HTML heading checks on linked media assets are excluded from QA findings',
     ] }));
     let evidence;
     const request = async payload => { evidence = JSON.parse(payload.input[1].content[0].text).evidence; return { output: [{ type: 'message', content: [{ type: 'output_text', text: JSON.stringify({ productSummary: '', observedFeatures: [], candidateFindings: [], limitations: [] }) }] }] }; };
-    const { report } = await analyzeQa(dir, { request, includeImages: false });
+    // title and heading checks are page-metadata (usability) checks: not findings unless --include-design
+    assert.equal((await analyzeQa(dir, { request, includeImages: false })).report.findings.length, 0);
+    const { report } = await analyzeQa(dir, { request, includeImages: false, includeDesign: true });
     assert.equal(report.findings.length, 1);
+    assert.equal(report.findings[0].severity, 'info');
     assert.deepEqual(report.findings[0].evidenceRefs, ['CF003']);
     assert.deepEqual(evidence.map(item => item.id), ['CF003']);
     assert.match(report.limitations.join(' '), /Ignored 2 HTML title\/heading check/);

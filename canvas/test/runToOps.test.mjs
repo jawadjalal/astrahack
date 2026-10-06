@@ -148,9 +148,9 @@ test("crawl and analyst evidence attach C/CF findings without duplicating crawle
     { id: "CF001", screenshot: "screenshots/crawl-pricing.png" },
     { id: "Q001", screenshot: "workers/A001/click.png" },
   ], findings: [
-    { id: "QA-001", summary: "HTTP 500", severity: "high", actual: "Server error", evidenceRefs: ["CF001"], verification: "recorded" },
-    { id: "QA-002", summary: "Unclear CTA", severity: "low", actual: "Ambiguous", evidenceRefs: ["C001"], verification: "hypothesis" },
-    { id: "QA-003", summary: "Button did nothing", severity: "medium", actual: "No response", evidenceRefs: ["Q001"], verification: "agent_reported", reproduction: ["Open home", "Click button"] },
+    { id: "QA-001", summary: "HTTP 500", severity: "high", expected: "Pricing loads", actual: "Server error", reproduction: ["Open /pricing"], evidenceRefs: ["CF001"], verification: "recorded" },
+    { id: "QA-002", summary: "Get started link goes nowhere", severity: "low", expected: "Sign up opens", actual: "The page does not change", reproduction: ["Open home", "Click Get started"], evidenceRefs: ["C001"], verification: "hypothesis" },
+    { id: "QA-003", summary: "Button did nothing", severity: "medium", expected: "A panel opens", actual: "No response", evidenceRefs: ["Q001"], verification: "agent_reported", reproduction: ["Open home", "Click button"] },
   ] };
   const converted = runToOps({ report: agent, crawl, analysis: qa });
   const images = converted.filter((o) => o.type === "add_image");
@@ -159,7 +159,7 @@ test("crawl and analyst evidence attach C/CF findings without duplicating crawle
   assert.equal(findings["HTTP 500"].target, "crawl-2");
   assert.equal(findings["HTTP 500"].verified, true);
   assert.match(findings["HTTP 500"].actual, /Evidence: CF001/);
-  assert.equal(findings["Unclear CTA"].target, "crawl-1");
+  assert.equal(findings["Get started link goes nowhere"].target, "crawl-1");
   assert.equal(findings["Button did nothing"].target, "step-1");
   assert.match(findings["Button did nothing"].actual, /Reproduce: Open home → Click button/);
   const crawlOnly = runToOps({ report: crawl, crawl, analysis: qa });
