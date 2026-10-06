@@ -9,6 +9,7 @@ import { basename, extname, resolve } from "node:path";
 import { homedir } from "node:os";
 import { randomBytes } from "node:crypto";
 import { OpSchema, type Op } from "../src/lib/ops";
+import { kitToOpsDetailed, detectSayOp, postCardOps, ugcCardOps, stateElements, liveIds, originBelow, type Box as KitBox } from "../src/lib/kitToOps";
 
 const BASE = (process.env.CANVAS_URL || "http://localhost:3000").replace(/\/+$/, "");
 const START_HINT = `Start the canvas app with \`cd canvas && npm run dev\` (expected at ${BASE}; override with CANVAS_URL), then retry.`;
@@ -728,6 +729,165 @@ server.registerTool("canvas_order", {
 }, wrap(async (a) => {
   await postOps(validate([{ type: "order", ids: a.ids, to: a.to }]));
   return `Moved ${a.ids.join(", ")} ${a.to === "front" || a.to === "back" ? `to the ${a.to}` : a.to}.`;
+}));
+
+// ---------- launch kit lane (ad creatives, GTM posts, UGC concepts) ----------
+// Same layout as `node scripts/push-kit.mjs` (src/lib/kitToOps.ts): a labelled lane below the existing teardown.
+
+async function boardState(): Promise<{ els: Map<string, KitBox>; live: Set<string> }> {
+  const st = await http("/api/state");
+  const ops = (st.ops ?? []) as unknown[];
+  return { els: stateElements(ops), live: liveIds(ops) };
+}
+
+const unionBox = (boxes: KitBox[]): KitBox | null => {
+  if (!boxes.length) return null;
+  const x0 = Math.min(...boxes.map((b) => b.x)), y0 = Math.min(...boxes.map((b) => b.y));
+  return { x: x0, y: y0, w: Math.max(...boxes.map((b) => b.x + b.w)) - x0, h: Math.max(...boxes.map((b) => b.y + b.h)) - y0 };
+};
+
+server.registerTool("canvas_push_ad_creatives", {
+  description:
+    "Put the five generated ad creatives on the canvas as an 'Ad concepts' lane (ids ad-1..ad-5), each PNG captioned with its art direction. Pass run_dir = the artifacts/ads-<run> folder written by `npm run generate` (reads its manifest.json and uploads the PNGs), or images = explicit local files. Default placement: below the lowest existing element, left-aligned with the existing content (a teardown is not overlapped); pass x,y to choose. Entries that are not generated (dry run, failed) become a labelled placeholder card, never a fake picture. Returns the ids and the y where the next lane can start.",
+  inputSchema: {
+    run_dir: z.string().optional().describe("Folder holding manifest.json + the PNGs, e.g. artifacts/ads-2026-10-06T...-ab12cd34."),
+    images: z.array(z.object({
+      path: z.string().describe("Local image path (absolute or ~/...)."),
+      name: z.string().optional().describe("Short name, e.g. 'hero'."),
+      direction: z.string().optional().describe("Art direction caption."),
+    })).max(10).optional().describe("Alternative to run_dir: the images to place, in order."),
+    x: z.number().optional().describe("Canvas x of the lane's top-left. Default: left edge of existing content."),
+    y: z.number().optional().describe("Canvas y of the lane's top-left. Default: 240px below the lowest existing element."),
+  },
+}, wrap(async (a) => {
+  if (!a.run_dir && !a.images?.length) throw new CanvasError("Provide run_dir (folder with manifest.json) or images.");
+  let manifest: { creatives?: { filename?: string; status?: string }[] } & Record<string, unknown>;
+  const files = new Map<string, string>(); // filename -> local path
+  if (a.run_dir) {
+    const dir = localPath(a.run_dir);
+    try { manifest = JSON.parse(await readFile(resolve(dir, "manifest.json"), "utf8")); } catch (e) { throw new CanvasError(`Cannot read ${resolve(dir, "manifest.json")}: ${(e as Error).message}`); }
+    if (!Array.isArray(manifest.creatives)) throw new CanvasError("manifest.json has no creatives[]; pass the folder written by `npm run generate`.");
+    for (const c of manifest.creatives) if (c?.filename && c.status !== "failed") files.set(c.filename, resolve(dir, c.filename));
+  } else {
+    manifest = { creatives: a.images!.map((im, i) => ({ index: i + 1, name: im.name ?? `ad ${i + 1}`, filename: basename(im.path), direction: im.direction, status: "complete" })) };
+    for (const im of a.images!) files.set(basename(im.path), localPath(im.path));
+  }
+  const board = await boardState();
+  if (board.live.has("ad-1")) throw new CanvasError("An ad lane is already on the canvas (ad-1 exists). Delete ad-1..ad-5 (canvas_delete) first, or place these with canvas_add_screenshot.");
+  const srcMap: Record<string, string> = {}, sizes: Record<string, { w: number; h: number }> = {};
+  for (const [name, p] of files) {
+    let bytes: Buffer;
+    try { bytes = await readFile(p); } catch { continue; } // missing file -> placeholder card
+    srcMap[name] = await uploadBytes(bytes, name, MIME_BY_EXT[extname(p).toLowerCase()] ?? "image/png");
+    const sz = imageSize(bytes);
+    if (sz) sizes[name] = sz;
+  }
+  const origin = a.x != null || a.y != null ? { x: a.x ?? 0, y: a.y ?? 0 } : originBelow(unionBox([...board.els.values()]));
+  const res = kitToOpsDetailed({ ads: manifest }, { origin, srcMap, sizes, banner: false, say: detectSayOp(OpSchema) });
+  const isSay = (o: Op) => (o as { type: string }).type === "say";
+  const say = res.ops.filter(isSay), ops = res.ops.filter((o) => !isSay(o));
+  await postOps(validate(ops));
+  for (const o of say) { try { await postOps(validate([o])); } catch { /* an older canvas may not know say */ } }
+  const pictures = Object.keys(srcMap).length;
+  const b = res.bounds;
+  return `Added the ad lane at (${origin.x},${origin.y}): ${res.counts.ads} concepts (${pictures} images, ${res.counts.ads - pictures} placeholders), ids ${res.ids.filter((i) => /^ad-\d+$/.test(i)).join(", ")}. Lane spans x=${Math.round(b.x)}..${Math.round(b.x + b.w)}, y=${Math.round(b.y)}..${Math.round(b.y + b.h)}; the next lane can start at y=${Math.round(b.y + b.h + 170)}.`;
+}));
+
+server.registerTool("canvas_add_campaign_post", {
+  description:
+    "Add one drafted GTM post (X or Reddit) to the canvas as a card with a platform chip. X posts and thread parts hold the publishable copy; Reddit takes a title and body. Cards line up in a row per platform under a 'GTM posts' area: the first one starts below the existing content, later ones go to the right of the previous card of the same kind (x,y override). Thread parts (thread_part=N) chain with an arrow from part N-1. Returns the card id. Drafts only: nothing is published anywhere.",
+  inputSchema: {
+    platform: z.enum(["x", "reddit"]),
+    text: z.string().min(1).describe("The post copy (X: <= 280 bytes incl. CTA; Reddit: the body)."),
+    title: z.string().optional().describe("Reddit post title."),
+    angle: z.string().optional().describe("X post angle, shown under the chip."),
+    thread_part: z.number().int().min(1).max(25).optional().describe("Set for a part of the X launch thread (1-based)."),
+    thread_total: z.number().int().min(1).max(25).optional().describe("Number of parts in the thread, shown as 3/6."),
+    label: z.string().optional().describe("Content id from the campaign JSON, e.g. x-3 or reddit-1; it becomes part of the card id (gtm-x-x-3)."),
+    x: z.number().optional(), y: z.number().optional(),
+  },
+}, wrap(async (a) => {
+  if (a.thread_part && a.platform !== "x") throw new CanvasError("thread_part only applies to platform x.");
+  const board = await boardState();
+  const kind = a.thread_part ? "x-thread" : a.platform;
+  const cards = [...board.els.entries()].filter(([id]) => id.startsWith(`gtm-${kind}-`) && !id.endsWith("-title"));
+  const index = a.thread_part ?? cards.length + 1;
+  const ops: Op[] = [];
+  let pos: { x: number; y: number };
+  if (a.x != null && a.y != null) pos = { x: a.x, y: a.y };
+  else if (cards.length) {
+    const last = cards[cards.length - 1][1];
+    pos = { x: a.x ?? last.x + last.w + (a.thread_part ? 64 : 50), y: a.y ?? last.y };
+  } else {
+    // first card of this kind: a section title, then the card, below everything (and under earlier gtm rows)
+    const gtm = unionBox([...board.els.entries()].filter(([id]) => id.startsWith("gtm-")).map(([, b]) => b));
+    const start = gtm ? { x: gtm.x, y: gtm.y + gtm.h + 70 } : originBelow(unionBox([...board.els.values()]));
+    const tid = `gtm-${kind}-title`;
+    if (!board.live.has(tid)) {
+      const title = a.thread_part ? "X  ·  launch thread" : a.platform === "x" ? "X  ·  standalone posts" : "Reddit  ·  post drafts";
+      ops.push({ type: "add_shape", id: tid, kind: "text", x: a.x ?? start.x, y: a.y ?? start.y, text: title, color: "black" }, { type: "update", id: tid, props: { font: "sans", size: "m" } });
+    }
+    pos = { x: a.x ?? start.x, y: a.y ?? start.y + 44 };
+  }
+  const card = postCardOps(a.platform, { id: a.label, text: a.text, title: a.title, angle: a.angle, index, total: a.thread_total, thread: !!a.thread_part }, pos);
+  if (board.live.has(card.id)) throw new CanvasError(`${card.id} already exists on the canvas; pass a different label.`);
+  ops.push(...card.ops);
+  if (a.thread_part && a.thread_part > 1 && board.live.has(`gtm-x-thread-${a.thread_part - 1}`)) {
+    ops.push({ type: "add_arrow", id: `kit-arrow-thread-${a.thread_part - 1}`, from: `gtm-x-thread-${a.thread_part - 1}`, to: card.id, color: "grey" });
+  }
+  await postOps(validate(ops));
+  return `Added ${a.platform}${a.thread_part ? ` thread part ${a.thread_part}` : ""} card id=${card.id} at (${Math.round(pos.x)},${Math.round(pos.y)}), about ${card.w}x${card.h}. The next ${a.thread_part ? "part" : "card"} of this kind goes to x=${Math.round(pos.x + card.w + (a.thread_part ? 64 : 50))}.`;
+}));
+
+server.registerTool("canvas_add_ugc_concept", {
+  description:
+    "Add one UGC video concept to the canvas as a card: platform, format, the hook, the beats (voiceover / on-screen text / shot) and CTA. evidence_ids (and beats' asset_ref) draw arrows from the card to screenshots already on the canvas that back the claims (e.g. step-3 from a teardown); unknown ids are an error. Cards fill a grid of five per row under the existing content; x,y override. Returns the card id. Only use hooks, beats and claims grounded in what the teardown observed.",
+  inputSchema: {
+    hook: z.string().min(1).describe("The first spoken / on-screen line."),
+    platform: z.enum(["tiktok", "instagram-reels", "youtube-shorts", "linkedin", "x"]).optional(),
+    format: z.string().optional().describe("e.g. talking-head, screen-recording-voiceover, problem-solution."),
+    duration_sec: z.number().int().positive().optional(),
+    title: z.string().optional(),
+    visual_opener: z.string().optional().describe("What the viewer sees in the first 2 seconds."),
+    creator: z.string().optional().describe("Creator archetype to cast."),
+    beats: z.array(z.object({
+      t: z.string().optional().describe("Time range, e.g. 0-2s."),
+      voiceover: z.string().optional(), on_screen_text: z.string().optional(), shot: z.string().optional(),
+      asset_ref: z.string().optional().describe("Canvas id of the screenshot shown in this beat (adds an arrow)."),
+    })).optional(),
+    cta: z.string().optional(),
+    evidence_ids: z.array(idArg).optional().describe("Ids of screenshots on the canvas to arrow to."),
+    x: z.number().optional(), y: z.number().optional(),
+    id: z.string().min(1).max(40).optional().describe("Optional concept id, e.g. S1; the card id becomes ugc-S1."),
+  },
+}, wrap(async (a) => {
+  const board = await boardState();
+  const evidence = [...new Set([...(a.evidence_ids ?? []), ...(a.beats ?? []).map((b) => b.asset_ref).filter((v): v is string => !!v)])];
+  const unknown = evidence.filter((e) => !board.live.has(e));
+  if (unknown.length) throw new CanvasError(`Unknown evidence id(s) ${unknown.join(", ")}. Call canvas_get_state to list ids on the board.`);
+  const cards = [...board.els.entries()].filter(([id]) => id.startsWith("ugc-") && id !== "ugc-lane-title");
+  const PER_ROW = 5, GAP = 50;
+  const ops: Op[] = [];
+  let pos: { x: number; y: number };
+  if (a.x != null && a.y != null) pos = { x: a.x, y: a.y };
+  else if (cards.length) {
+    const all = unionBox(cards.map(([, b]) => b))!;
+    const last = cards[cards.length - 1][1];
+    pos = cards.length % PER_ROW === 0 ? { x: all.x, y: all.y + all.h + GAP } : { x: last.x + last.w + GAP, y: last.y };
+  } else {
+    const start = originBelow(unionBox([...board.els.values()]));
+    if (!board.live.has("ugc-lane-title")) ops.push({ type: "add_shape", id: "ugc-lane-title", kind: "text", x: start.x, y: start.y, text: "UGC CONCEPTS", color: "black" }, { type: "update", id: "ugc-lane-title", props: { font: "sans", size: "xl" } });
+    pos = { x: start.x, y: start.y + 110 };
+  }
+  const card = ugcCardOps({
+    id: a.id ?? a.title ?? a.hook, platform: a.platform, format: a.format, durationSec: a.duration_sec, title: a.title, hook: a.hook, visualOpener: a.visual_opener, creator: a.creator, cta: a.cta,
+    beats: (a.beats ?? []).map((b) => ({ t: b.t, voiceover: b.voiceover, onScreenText: b.on_screen_text, shot: b.shot, assetRef: b.asset_ref })),
+    evidenceIds: evidence,
+  }, pos);
+  if (board.live.has(card.id)) throw new CanvasError(`${card.id} already exists on the canvas; pass a different id.`);
+  ops.push(...card.ops);
+  await postOps(validate(ops));
+  return `Added UGC concept id=${card.id} at (${Math.round(pos.x)},${Math.round(pos.y)}), about ${card.w}x${card.h}${evidence.length ? `, arrows to ${evidence.join(", ")}` : ""}.`;
 }));
 
 async function main() {
