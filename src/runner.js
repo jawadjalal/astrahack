@@ -20,8 +20,31 @@ async function until(check, description, timeoutMs = 10000) {
 const pageUrl = cdp => cdp.eval('location.href');
 
 export async function navigate(cdp, url) {
-  await cdp.send('Page.navigate', { url });
-  await until(() => cdp.eval('document.readyState === "complete"'), `page load: ${url}`, 15000);
+  const result = await cdp.send('Page.navigate', { url }, 45000);
+  if (result.errorText) throw new Error(`Navigation failed: ${result.errorText}`);
+  // A stalled script can keep readyState=loading while the UI is already rendered.
+  // Wait for usable content, not a load event that depends on every remote asset.
+  let state;
+  try {
+    await until(async () => {
+      state = await cdp.eval(`(() => {
+        const body = document.body;
+        const visible = el => {
+          const style = getComputedStyle(el);
+          return style.display !== 'none' && style.visibility !== 'hidden' && [...el.getClientRects()].some(r => r.width > 0 && r.height > 0);
+        };
+        const bodyStyle = body && getComputedStyle(body);
+        const rendered = !!body && bodyStyle.display !== 'none' && bodyStyle.visibility !== 'hidden' && Number(bodyStyle.opacity) > 0 && (
+          (visible(body) && !!body.innerText.trim()) || [...body.querySelectorAll('a,button,input,textarea,select,img,video,canvas,svg,iframe')].some(visible)
+        );
+        return { url: location.href, readyState: document.readyState, rendered };
+      })()`);
+      return state.url !== 'about:blank' && state.rendered;
+    }, `rendered page content: ${url}`, 45000);
+  } catch (error) {
+    throw new Error(`${error.message}${state ? ` (url=${state.url}, readyState=${state.readyState}, rendered=${state.rendered})` : ''}`);
+  }
+  await sleep(500);
 }
 
 export async function observe(cdp) {

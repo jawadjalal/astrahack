@@ -5,6 +5,7 @@
 //   - a runner report.json            (journeys[].steps[], findings[], assets[], product)
 //   - a qa-agent.json / fleet combined (steps[], assessment.issues[], workers[])
 //   - { report, analysis }            (analysis = qa-analysis.json, whose findings win over assessment.issues)
+//   - { report, crawl, analysis }     (crawl.json adds C/CF screenshot evidence)
 // No I/O. Screenshot/video paths are mapped to hosted URLs through opts.srcMap / opts.srcFor
 // (scripts/push-run.mjs uploads the files first). Nothing is invented: a field missing from the bundle is
 // left off the op. Only erasable TypeScript here so Node can import this file directly.
@@ -33,6 +34,10 @@ export interface RunToOpsOptions {
   title?: string;
   /** append a final focus op (default true) */
   focus?: boolean;
+  /** Namespace ids when several runs share a board (also rewrites every reference). */
+  idPrefix?: string;
+  /** Canvas offset for this run; the layout's title starts 400px above this origin. */
+  origin?: { x: number; y: number };
 }
 
 interface Region { x: number; y: number; w: number; h: number; unit?: string; label?: string; severity?: string; viewport?: { width: number; height: number } }
@@ -169,6 +174,7 @@ function evidenceIndexFromRef(ref: unknown): number | null {
 export function runToOps(bundle: any, opts: RunToOpsOptions = {}): Op[] {
   const report = bundle?.report ?? bundle ?? {};
   const analysis = opts.analysis ?? bundle?.analysis ?? null;
+  const crawl = bundle?.crawl ?? (Array.isArray(report.pages) ? report : null);
   const W = opts.stepWidth ?? 520;
   const GAP = opts.gap ?? 140;
   const single = opts.layout === "single";
@@ -182,12 +188,25 @@ export function runToOps(bundle: any, opts: RunToOpsOptions = {}): Op[] {
   const groups: Group[] = [];
   const byIndex = new Map<number, StepNode>();
   const byPath = new Map<string, StepNode>();
-  const mkNode = (index: number, label: string, path: string, failed: boolean, regions: any[]): StepNode => {
-    const n: StepNode = { id: `step-${index}`, index, label, path, failed, regions, w: W, h: heightFor(path), x: 0, y: 0 };
-    byIndex.set(index, n);
+  const byEvidenceRef = new Map<string, StepNode>();
+  const mkNode = (index: number, label: string, path: string, failed: boolean, regions: any[], id = `step-${index}`, registerIndex = true): StepNode => {
+    const n: StepNode = { id, index, label, path, failed, regions, w: W, h: heightFor(path), x: 0, y: 0 };
+    if (registerIndex) byIndex.set(index, n);
     byPath.set(path, n);
     return n;
   };
+
+  if (crawl?.pages?.length) {
+    const crawled: Group = { name: "Crawled pages", status: "observed", nodes: [] };
+    for (const [i, page] of crawl.pages.entries()) {
+      if (!page?.screenshot) continue;
+      const index = i + 1;
+      const node = mkNode(index, clip(page.finalUrl ?? page.url ?? `Page ${index}`, 52), page.screenshot, false, [], `crawl-${index}`, false);
+      crawled.nodes.push(node);
+      byEvidenceRef.set(`C${String(index).padStart(3, "0")}`, node);
+    }
+    if (crawled.nodes.length) groups.push(crawled);
+  }
 
   if (opts.includeInitial) {
     const init = (report.assets ?? []).find((a: any) => a?.type === "screenshot" && a.purpose);
@@ -234,8 +253,11 @@ export function runToOps(bundle: any, opts: RunToOpsOptions = {}): Op[] {
     if (!node && Number.isFinite(f.evidenceStep)) node = byIndex.get(f.evidenceStep);
     if (!node && Array.isArray(f.evidenceRefs)) {
       for (const r of f.evidenceRefs) {
+        if (byEvidenceRef.has(String(r))) { node = byEvidenceRef.get(String(r)); break; }
         const i = evidenceIndexFromRef(r);
         if (i != null && byIndex.has(i)) { node = byIndex.get(i); break; }
+        const source = analysis?.evidence?.find((item: any) => item.id === r);
+        if (source?.screenshot && byPath.has(source.screenshot)) { node = byPath.get(source.screenshot); break; }
       }
     }
     const verification = String(f.verification ?? "").toLowerCase();
@@ -255,19 +277,22 @@ export function runToOps(bundle: any, opts: RunToOpsOptions = {}): Op[] {
     let key = String(f.id ?? drafts.length + 1);
     if (usedKeys.has(key)) key = `${key}-${kind}${drafts.length + 1}`;
     usedKeys.add(key);
+    const evidence = Array.isArray(f.evidenceRefs) && f.evidenceRefs.length ? `Evidence: ${f.evidenceRefs.join(", ")}` : "";
+    const reproduction = Array.isArray(f.reproduction) && f.reproduction.length ? `Reproduce: ${f.reproduction.join(" → ")}` : "";
     drafts.push({
       key,
       title,
       severity: mapSeverity(f.severity),
       expected: f.expected ? clip(f.expected, 300) : undefined,
-      actual: f.actual ? clip(f.actual, 400) : undefined,
+      actual: [evidence, f.actual, reproduction].filter(Boolean).length ? clip([evidence, f.actual, reproduction].filter(Boolean).join("\n"), 400) : undefined,
       verified,
       timestamp,
       nodeId: node?.id,
       regions: regionsOf(f).map((r) => ({ ...r, __path: node?.path })),
     });
   };
-  for (const f of report.findings ?? []) addDraft(f, "runner");
+  // qa-analysis already includes crawler findings; do not render them twice for a crawl-only bundle.
+  if (!(analysis && report === crawl)) for (const f of report.findings ?? []) addDraft(f, "runner");
   if (analysis && Array.isArray(analysis.findings)) for (const f of analysis.findings) addDraft(f, "analysis");
   else for (const f of report.assessment?.issues ?? []) addDraft(f, "agent");
 
@@ -288,7 +313,7 @@ export function runToOps(bundle: any, opts: RunToOpsOptions = {}): Op[] {
 
   const titleLines = [
     clip(opts.title ?? report.name ?? "Computer-use run", 60),
-    report.target?.url ? clip(report.target.url, 60) : "",
+    report.target?.url || typeof report.target === "string" ? clip(report.target?.url ?? report.target, 60) : "",
     `${report.status ?? "run"} · ${totalSteps} steps · ${failedCount} finding${failedCount === 1 ? "" : "s"}`,
   ].filter(Boolean);
   ops.push({ type: "add_shape", id: "run-title", kind: "note", x: 0, y: -400, text: titleLines.join("\n"), color: "yellow" });
@@ -311,7 +336,7 @@ export function runToOps(bundle: any, opts: RunToOpsOptions = {}): Op[] {
       n.y = y;
       ops.push({ type: "add_image", id: n.id, src: srcOf(n.path), x: n.x, y: n.y, w: n.w, h: n.h, label: n.label, step: n.index });
       ids.push(n.id);
-      if (prev) ops.push({ type: "add_arrow", id: `arrow-${n.index}`, from: prev.id, to: n.id });
+      if (prev) ops.push({ type: "add_arrow", id: n.id.startsWith("crawl-") ? `crawl-arrow-${n.index}` : `arrow-${n.index}`, from: prev.id, to: n.id });
       prev = n;
       let k = 0;
       for (const r of n.regions) {
@@ -355,7 +380,30 @@ export function runToOps(bundle: any, opts: RunToOpsOptions = {}): Op[] {
   }
 
   if (opts.focus !== false) ops.push({ type: "focus", ids });
-  return ops;
+  if (!opts.idPrefix && !opts.origin) return ops;
+  const prefix = opts.idPrefix ?? "";
+  if (prefix.length > 24 || /[^a-zA-Z0-9_-]/.test(prefix)) throw new Error("idPrefix must contain at most 24 letters, digits, underscores or hyphens");
+  const names = new Map<string, string>();
+  const scoped = (id: string): string => {
+    if (!prefix) return id;
+    if (!names.has(id)) {
+      let hash = 2166136261;
+      for (const char of id) hash = Math.imul(hash ^ char.charCodeAt(0), 16777619);
+      const full = `${prefix}-${id}`;
+      names.set(id, full.length <= 64 ? full : `${full.slice(0, 55)}-${(hash >>> 0).toString(16).padStart(8, "0")}`);
+    }
+    return names.get(id)!;
+  };
+  return ops.map((op) => {
+    const out = { ...op } as Op;
+    if ("id" in out && out.id) out.id = scoped(out.id);
+    if ("target" in out && out.target) out.target = scoped(out.target);
+    if (out.type === "add_arrow") { out.from = scoped(out.from); out.to = scoped(out.to); }
+    if (out.type === "focus" && out.ids) out.ids = out.ids.map(scoped);
+    if ("x" in out) out.x += opts.origin?.x ?? 0;
+    if ("y" in out) out.y += opts.origin?.y ?? 0;
+    return out;
+  });
 }
 
 export default runToOps;

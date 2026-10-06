@@ -10,6 +10,7 @@
 import { readFile, stat, readdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { createHash } from "node:crypto";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -28,6 +29,9 @@ function parseArgs(argv) {
     else if (t.startsWith("--canvas=")) a.canvas = t.slice(9);
     else if (t === "--layout") a.layout = argv[++i];
     else if (t === "--delay") a.delay = Number(argv[++i]);
+    else if (t === "--run-id") a.runId = argv[++i];
+    else if (t === "--x") a.x = Number(argv[++i]);
+    else if (t === "--y") a.y = Number(argv[++i]);
     else if (t === "-h" || t === "--help") a.help = true;
     else a._.push(t);
   }
@@ -38,6 +42,8 @@ const USAGE = `usage: node canvas/scripts/push-run.mjs <runDir|report.json> [--c
   --canvas URL  canvas base URL (default $CANVAS_URL or http://localhost:3000; base paths ok)
   --live        ~400ms between steps so the canvas animates as a watcher sees it (--delay overrides)
   --clear       wipe the board first (DELETE /api/state)
+  --run-id ID   stable run identity (default report path + start time); prevents cross-run id collisions
+  --x / --y N  placement origin; default appends below existing content
   --dry-run     print the ops, upload and post nothing`;
 
 async function exists(p) { try { await stat(p); return true; } catch { return false; } }
@@ -46,7 +52,7 @@ async function locate(input) {
   const s = await stat(input).catch(() => null);
   if (!s) throw new Error(`not found: ${input}`);
   if (!s.isDirectory()) return { reportPath: input, dir: path.dirname(input) };
-  for (const name of ["report.json", "qa-agent.json", "fleet.json"]) {
+  for (const name of ["report.json", "qa-agent.json", "fleet.json", "crawl.json"]) {
     const p = path.join(input, name);
     if (await exists(p)) {
       // fleet.json lists assignments only; the combined evidence lives in qa-agent.json
@@ -55,7 +61,7 @@ async function locate(input) {
     }
   }
   const names = await readdir(input);
-  throw new Error(`no report.json or qa-agent.json in ${input} (found: ${names.slice(0, 8).join(", ")})`);
+  throw new Error(`no report.json, qa-agent.json, or crawl.json in ${input} (found: ${names.slice(0, 8).join(", ")})`);
 }
 
 function pngSize(buf) {
@@ -78,6 +84,8 @@ async function main() {
 
   const { reportPath, dir } = await locate(path.resolve(args._[0]));
   const report = JSON.parse(await readFile(reportPath, "utf8"));
+  const crawlPath = path.join(dir, "crawl.json");
+  const crawl = reportPath === crawlPath ? report : (await exists(crawlPath)) ? JSON.parse(await readFile(crawlPath, "utf8")) : null;
   const analysisPath = path.join(dir, "qa-analysis.json");
   const analysis = (await exists(analysisPath)) ? JSON.parse(await readFile(analysisPath, "utf8")) : null;
 
@@ -92,6 +100,7 @@ async function main() {
   }
   for (const s of report.steps ?? []) if (s.screenshot) rel.add(s.screenshot);
   for (const a of report.assets ?? []) if (a.type === "video" && a.path) rel.add(a.path);
+  for (const page of crawl?.pages ?? []) if (page.screenshot) rel.add(page.screenshot);
 
   const sizes = {};
   const srcMap = {};
@@ -115,11 +124,16 @@ async function main() {
       if (j.video && !have.has(j.video)) delete j.video;
     }
     if (c.steps) c.steps = c.steps.filter((s) => !s.screenshot || have.has(s.screenshot));
+    if (c.pages) c.pages = c.pages.map((p) => p.screenshot && !have.has(p.screenshot) ? { ...p, screenshot: null } : p);
     return c;
   };
   const pruned = prune(report);
+  const prunedCrawl = crawl === report ? pruned : crawl ? prune(crawl) : null;
 
-  const buildOps = (map) => runToOps(pruned, { analysis, srcMap: map, sizes, layout: args.layout });
+  for (const value of [args.x, args.y]) if (value !== undefined && !Number.isFinite(value)) throw new Error("--x and --y must be finite numbers");
+  const idPrefix = `run-${createHash("sha256").update(args.runId ?? `${reportPath}:${report.startedAt ?? ""}`).digest("hex").slice(0, 12)}`;
+  let origin = { x: args.x ?? 0, y: args.y ?? 0 };
+  const buildOps = (map) => runToOps({ report: pruned, crawl: prunedCrawl, analysis }, { srcMap: map, sizes, layout: args.layout, idPrefix, origin });
 
   if (args.dry) {
     const fake = Object.fromEntries([...have].map((p) => [p, `/uploads/${path.basename(p)}`]));
@@ -148,10 +162,29 @@ async function main() {
     return body.url; // app-relative url incl. base path, exactly as returned
   }
 
-  try { await fetch(api("/state")); } catch (e) {
+  let state;
+  try {
+    const response = await fetch(api("/state"));
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    state = await response.json();
+  } catch (e) {
     throw new Error(`canvas not reachable at ${base} (${e.cause?.code ?? e.message}). Start it: cd canvas && npm run dev`);
   }
-  if (args.clear) await fetch(api("/state"), { method: "DELETE" });
+  if (args.clear) {
+    const response = await fetch(api("/state"), { method: "DELETE" });
+    if (!response.ok) throw new Error(`clear failed: HTTP ${response.status}`);
+  } else {
+    const placed = new Map();
+    for (const { op } of state.ops ?? []) {
+      if (op.type === "clear") placed.clear();
+      else if (op.type === "delete") placed.delete(op.id);
+      else if (op.id && op.type.startsWith("add_") && Number.isFinite(op.x)) placed.set(op.id, { x: op.x, y: op.y, h: op.h ?? (op.type === "add_finding" ? 500 : 400) });
+      else if (placed.has(op.id) && (op.type === "move" || op.type === "update")) Object.assign(placed.get(op.id), op.type === "move" ? { x: op.x, y: op.y } : op.props);
+    }
+    const previous = placed.get(`${idPrefix}-run-title`);
+    const bottom = Math.max(0, ...[...placed.values()].map((p) => p.y + p.h));
+    origin = { x: args.x ?? previous?.x ?? 0, y: args.y ?? (previous ? previous.y + 400 : placed.size ? bottom + 640 : 0) };
+  }
 
   console.log(`uploading ${uploads.length} file(s) to ${base} ...`);
   let n = 0;

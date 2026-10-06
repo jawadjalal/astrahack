@@ -135,6 +135,37 @@ test("agent / fleet bundle: steps[] grouped by worker, assessment issues become 
   assert.equal(o.filter((x) => x.type === "add_arrow").length, 1);
 });
 
+test("crawl and analyst evidence attach C/CF findings without duplicating crawler checks", () => {
+  const crawl = {
+    target: "https://acme.test/", pages: [
+      { url: "https://acme.test/", screenshot: "screenshots/crawl-home.png" },
+      { url: "https://acme.test/pricing", screenshot: "screenshots/crawl-pricing.png" },
+    ], findings: [{ type: "http_error", actual: "HTTP 500", evidence: "screenshots/crawl-pricing.png" }],
+  };
+  const agent = { target: "https://acme.test/", steps: [{ index: 1, workerId: "A001", type: "click", status: "passed", screenshot: "workers/A001/click.png" }] };
+  const qa = { evidence: [
+    { id: "C001", screenshot: "screenshots/crawl-home.png" },
+    { id: "CF001", screenshot: "screenshots/crawl-pricing.png" },
+    { id: "Q001", screenshot: "workers/A001/click.png" },
+  ], findings: [
+    { id: "QA-001", summary: "HTTP 500", severity: "high", actual: "Server error", evidenceRefs: ["CF001"], verification: "recorded" },
+    { id: "QA-002", summary: "Unclear CTA", severity: "low", actual: "Ambiguous", evidenceRefs: ["C001"], verification: "hypothesis" },
+    { id: "QA-003", summary: "Button did nothing", severity: "medium", actual: "No response", evidenceRefs: ["Q001"], verification: "agent_reported", reproduction: ["Open home", "Click button"] },
+  ] };
+  const converted = runToOps({ report: agent, crawl, analysis: qa });
+  const images = converted.filter((o) => o.type === "add_image");
+  assert.deepEqual(images.map((o) => o.id), ["crawl-1", "crawl-2", "step-1"]);
+  const findings = Object.fromEntries(converted.filter((o) => o.type === "add_finding").map((o) => [o.title, o]));
+  assert.equal(findings["HTTP 500"].target, "crawl-2");
+  assert.equal(findings["HTTP 500"].verified, true);
+  assert.match(findings["HTTP 500"].actual, /Evidence: CF001/);
+  assert.equal(findings["Unclear CTA"].target, "crawl-1");
+  assert.equal(findings["Button did nothing"].target, "step-1");
+  assert.match(findings["Button did nothing"].actual, /Reproduce: Open home → Click button/);
+  const crawlOnly = runToOps({ report: crawl, crawl, analysis: qa });
+  assert.equal(crawlOnly.filter((o) => o.type === "add_finding").length, 3);
+});
+
 test("single layout puts every step on one row with arrows across journeys", () => {
   const o = runToOps(report, { srcMap, layout: "single" });
   const imgs = o.filter((x) => x.type === "add_image");
