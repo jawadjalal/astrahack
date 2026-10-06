@@ -18,7 +18,7 @@ while (args.length) {
 }
 try {
   const result = await publishFeatureCaptures(manifestPath, { canvasUrl });
-  console.log(`Canvas: ${result.imageCount} screenshots, ${result.gapCount} coverage gaps at ${result.canvasUrl}`);
+  console.log(`Canvas: ${result.featureGroupCount} feature groups, ${result.imageCount} screenshots, ${result.gapCount} recorded issues, ${result.reviewNoteCount} review notes at ${result.canvasUrl}`);
 } catch (error) {
   console.error(error.message);
   process.exitCode = 2;

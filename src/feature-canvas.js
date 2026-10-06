@@ -36,6 +36,7 @@ export async function publishFeatureCaptures(manifestPath, options = {}) {
   const manifest = JSON.parse(await readFile(absoluteManifest, 'utf8'));
   if (!Array.isArray(manifest.features) || !Array.isArray(manifest.gaps)) throw new Error('Invalid feature capture manifest');
   const unmappedCount = manifest.unmappedReportedFeatures?.length || 0;
+  const reviewNotes = manifest.reviewNotes || [];
   const base = String(options.canvasUrl || process.env.CANVAS_URL || defaultCanvasUrl).replace(/\/+$/, '');
   const fetchImpl = options.fetchImpl || fetch;
   const runId = createHash('sha256').update(`${absoluteManifest}:${manifest.createdAt || ''}`).digest('hex').slice(0, 8);
@@ -87,23 +88,28 @@ export async function publishFeatureCaptures(manifestPath, options = {}) {
       label: String(entry.feature.name || 'Observed feature').slice(0, 120), step: position + 1
     });
   }
-  if (manifest.gaps.length || unmappedCount) {
+  if (manifest.features.length || manifest.gaps.length || reviewNotes.length || unmappedCount) {
     const y = originY + rowHeights.reduce((sum, value) => sum + value + gap, 0);
-    const preview = manifest.gaps.slice(0, 8).map(gap => `• ${gap.feature}: ${gap.reason}`).join('\n');
-    const remainder = manifest.gaps.length > 8 ? `\n… and ${manifest.gaps.length - 8} more evidence gaps in manifest.json` : '';
+    const notes = [
+      ...manifest.gaps.map(gap => `• Recorded issue — ${gap.feature}: ${gap.reason}`),
+      ...reviewNotes.map(note => `• Batch review hypothesis — ${note.feature}: ${note.reason}`)
+    ];
+    const preview = notes.slice(0, 8).join('\n');
+    const remainder = notes.length > 8 ? `\n… and ${notes.length - 8} more issues or review notes in manifest.json` : '';
     const id = `capture-${runId}-gaps`;
-    const noteText = `Screenshot coverage: observed screens only\n${manifest.gaps.length} evidence gap(s); ${unmappedCount} agent labels not mapped to selected screenshots (may overlap captured features)\n${preview}${remainder}`;
+    const noteText = `Screenshot coverage: observed screens only\n${manifest.features.length} feature groups, ${entries.length} screenshots; groups may overlap\n${manifest.gaps.length} recorded capture/coverage issue(s); ${reviewNotes.length} batch-limited review notes (not globally verified)\n${unmappedCount} agent labels not mapped to selected screenshots (may overlap captured groups)\n${preview}${remainder}`;
     ids.push(id);
     if (existing.has(id)) {
       if (existing.get(id).text !== noteText) ops.push({ type: 'update', id, props: { text: noteText } });
     } else ops.push({ type: 'add_shape', id, kind: 'note', x: originX, y,
-      w: 1060, h: Math.min(700, 130 + Math.min(manifest.gaps.length, 8) * 62),
+      w: 1060, h: Math.min(1000, 180 + Math.min(notes.length, 8) * 100),
       text: noteText, color: 'orange' });
   }
-  if (!ops.length) return { canvasUrl: base, imageCount: entries.length, gapCount: manifest.gaps.length, ids, postedCount: 0 };
+  const counts = { imageCount: entries.length, featureGroupCount: manifest.features.length, gapCount: manifest.gaps.length, reviewNoteCount: reviewNotes.length, unmappedCount };
+  if (!ops.length) return { canvasUrl: base, ...counts, ids, postedCount: 0 };
   const posted = await canvasRequest(fetchImpl, base, '/api/ops', {
     method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(ops)
   });
   if (!Array.isArray(posted.ids) || posted.ids.length !== ops.length) throw new Error('Canvas did not acknowledge every operation');
-  return { canvasUrl: base, imageCount: entries.length, gapCount: manifest.gaps.length, ids, postedCount: ops.length };
+  return { canvasUrl: base, ...counts, ids, postedCount: ops.length };
 }

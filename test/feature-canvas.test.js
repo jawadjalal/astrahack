@@ -62,13 +62,16 @@ test('uploads selected PNGs and posts existing canvas ops; retry is idempotent',
     assert.equal(calls.ops, 1);
     await writeFile(manifestPath, JSON.stringify({ createdAt: '2026-10-06T00:00:00Z',
       features: [{ id: 'F001', name: 'Search', screenshots: [{ path: 'feature screen.png' }] }],
-      gaps: [], unmappedReportedFeatures: ['Related search label']
+      gaps: [], reviewNotes: [{ feature: 'Search', reason: 'Not seen in this batch', scope: 'batch', batch: 2 }],
+      unmappedReportedFeatures: ['Related search label']
     }));
     const revised = await publishFeatureCaptures(manifestPath, { canvasUrl, fetchImpl: fakeFetch });
     assert.equal(revised.postedCount, 1);
     assert.equal(calls.uploads, 1);
     assert.equal(state.ops.at(-1).op.type, 'update');
     assert.match(state.ops.at(-1).op.props.text, /1 agent labels not mapped/);
+    assert.match(state.ops.at(-1).op.props.text, /1 batch-limited review notes \(not globally verified\)/);
+    assert.match(state.ops.at(-1).op.props.text, /1 feature groups, 1 screenshots; groups may overlap/);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

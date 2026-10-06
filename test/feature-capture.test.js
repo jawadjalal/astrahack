@@ -32,7 +32,12 @@ test('selects observed features, copies screenshots, and records missing coverag
     assert.equal(requested.input[1].content.includes('S0001'), true);
     assert.equal(manifest.features.length, 1);
     assert.equal(manifest.features[0].screenshots.length, 1);
-    assert.equal(manifest.gaps[0].feature, 'Export');
+    assert.equal(manifest.gaps.length, 0);
+    assert.equal(manifest.reviewNotes[0].feature, 'Export');
+    assert.equal(manifest.reviewNotes[0].scope, 'batch');
+    assert.equal(manifest.reviewNotes[0].batch, 1);
+    assert.match(manifest.reviewNotes[0].verification, /not checked against all selected groups/);
+    assert.equal(manifest.coverage.featureGroupCount, 1);
     assert.equal((await stat(join(outputDir, manifest.features[0].screenshots[0].path))).size, 8);
     assert.equal(JSON.parse(await readFile(join(outputDir, 'manifest.json'))).features[0].name, 'Project editor');
   } finally {

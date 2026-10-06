@@ -20,7 +20,7 @@ while (args.length) {
 }
 try {
   const result = await captureMajorFeatures(reportPath, { output, model });
-  console.log(`${result.manifest.features.length} features; ${result.manifest.gaps.length} gaps: ${result.outputDir}/manifest.json`);
+  console.log(`${result.manifest.features.length} feature groups; ${result.manifest.gaps.length} recorded issues; ${result.manifest.reviewNotes.length} review notes: ${result.outputDir}/manifest.json`);
 } catch (error) {
   console.error(error.message);
   process.exitCode = 2;

@@ -136,8 +136,11 @@ async function applyCore(editor: Editor, op: Op, seq: number, animateCursor: boo
           id: labelId(key),
           type: "text",
           x: labelX,
-          y: op.y - (op.step != null ? 46 : 40),
-          props: { richText: toRichText(op.label), size: "l", font: "draw", autoSize: true },
+          y: op.y - 80,
+          props: {
+            richText: toRichText(op.label), size: "s", font: "draw", autoSize: false,
+            w: Math.max(120, w! - (op.step != null ? 136 : 0)),
+          },
         });
       }
       return null;
