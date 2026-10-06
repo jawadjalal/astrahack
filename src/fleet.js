@@ -5,6 +5,7 @@ import { crawlSite, normalizeLink } from './crawl.js';
 import { runQaAgent } from './qa-agent.js';
 import { createResponse } from './openai.js';
 import { createRunBudget, integerLimit, qaModel } from './qa-runtime.js';
+import { excludedSummary, filterFindings } from './findings-filter.js';
 
 const saveJson = (path, value) => writeFile(path, JSON.stringify(value, null, 2) + '\n');
 
@@ -60,13 +61,13 @@ export function planFleet(crawl, maxAgents) {
   };
 }
 
-export function combineAgentReports(crawl, jobs, results, model = qaModel()) {
+export function combineAgentReports(crawl, jobs, results, model = qaModel(), { includeDesign = false } = {}) {
   const combined = {
     schemaVersion: 1, target: crawl.target, model,
     status: jobs.length ? 'completed' : 'error', initialObservation: crawl.product || null,
     steps: [], assets: [], assessment: {
-      productUnderstanding: '', observedFeatures: [], journeysExercised: [], issues: [], limitations: []
-    }, limitations: [], workers: []
+      productUnderstanding: '', observedFeatures: [], journeysExercised: [], issues: [], excludedIssues: [], limitations: []
+    }, includeDesign, limitations: [], workers: []
   };
   let globalIndex = 0;
   for (const [index, job] of jobs.entries()) {
@@ -97,10 +98,15 @@ export function combineAgentReports(crawl, jobs, results, model = qaModel()) {
           evidence: mapped && localEvidence ? `workers/${job.id}/${localEvidence}` : null,
           verification: mapped ? issue.verification : 'unverified evidence reference' });
       }
+      combined.assessment.excludedIssues.push(...(assessment.excludedIssues || []).map(item => ({ ...item, workerId: job.id })));
       combined.assessment.limitations.push(...(assessment.limitations || []));
     }
     combined.limitations.push(...(report.limitations || []));
   }
+  // Workers already filter their own issues; this re-checks the merged list (unmapped evidence steps become -1).
+  const { kept, dropped } = filterFindings(combined.assessment.issues, { includeDesign });
+  combined.assessment.issues = kept;
+  combined.assessment.excludedIssues.push(...dropped.map(excludedSummary));
   combined.assessment.observedFeatures = [...new Set(combined.assessment.observedFeatures)];
   combined.assessment.journeysExercised = [...new Set(combined.assessment.journeysExercised)];
   combined.assessment.limitations = [...new Set(combined.assessment.limitations)];
@@ -111,7 +117,7 @@ export function combineAgentReports(crawl, jobs, results, model = qaModel()) {
 export async function runFleet({
   url, chrome, output, brief = '', model,
   maxPages = 50, maxDepth = 4, maxAgents, concurrency,
-  maxTurns = 20, maxActions = 100, headless = true,
+  maxTurns = 20, maxActions = 100, headless = true, includeDesign = false,
   maxRequests, maxDurationMs = 900000, maxOutputTokens = 8192, signal,
   request = createResponse, crawl = crawlSite, agent = runQaAgent, onProgress
 }) {
@@ -128,7 +134,7 @@ export async function runFleet({
   await mkdir(out, { recursive: true });
   const startedAt = new Date().toISOString();
   await onProgress?.({ phase: 'crawl', status: 'started' });
-  const { report: crawlReport } = await crawl({ url, chrome, output: out, maxPages, maxDepth, headless });
+  const { report: crawlReport } = await crawl({ url, chrome, output: out, maxPages, maxDepth, headless, includeDesign });
   const fullPlan = planFleet(crawlReport);
   concurrency ??= defaultFleetConcurrency(fullPlan.jobs.length);
   const queue = [...fullPlan.jobs];
@@ -182,14 +188,14 @@ export async function runFleet({
     record.status = 'running';
     await onProgress?.({ phase: 'agent', status: 'started', job });
     const missionBrief = {
-      journey: 'Exercise the main read-only user journey reachable from this page. Verify observable outcomes.',
-      feature_map: 'Scroll through the entire page, inspect sections and reveals, and identify meaningful feature screens for the screenshot team.',
-      controls: 'Exercise visible tabs, filters, search, accordions, and other safe controls. Check whether their behavior matches labels and instructions.',
+      journey: 'Exercise the main read-only user journey reachable from this page. Verify observable outcomes and report only functional failures (a flow that cannot be completed, an action with no or the wrong effect, errors, wrong data, dead links).',
+      feature_map: 'Scroll through the entire page, inspect sections and reveals, and identify meaningful feature screens for the screenshot team. Report a finding only for broken behavior you actually see; never design, copy or layout opinions.',
+      controls: 'Exercise visible tabs, filters, search, accordions, and other safe controls. Check whether their behavior matches labels and instructions, and report only controls that do nothing, do the wrong thing or error.',
       navigation: 'Audit the site navigation through the UI: inspect menus, header and footer links, open important destinations, and check that navigation labels match the resulting pages. Report discovered routes and broken navigation.'
     }[job.mission];
     try {
       const result = await agent({
-        url: job.url, chrome, output: join(out, 'workers', job.id), model, maxTurns, maxActions, headless, request, runtime,
+        url: job.url, chrome, output: join(out, 'workers', job.id), model, maxTurns, maxActions, headless, includeDesign, request, runtime,
         brief: `${brief}\nAssigned page: ${job.url}\nMission: ${job.mission}. ${missionBrief}\nObserved title: ${job.title}\nObserved headings: ${job.headings.join(' | ')}\nStay focused on this assignment; other workers cover other pages and missions.`
       });
       result.relativeReport = `workers/${job.id}/qa-agent.json`;
@@ -238,7 +244,7 @@ export async function runFleet({
   }
   fleet.unassigned = [...new Set(queue.filter(job => job.mission === 'journey').map(job => job.url))];
   fleet.unscheduledMissions = queue.filter(job => job.mission !== 'journey').map(({ url: pageUrl, mission }) => ({ url: pageUrl, mission }));
-  const combined = combineAgentReports(crawlReport, jobs, results, model);
+  const combined = combineAgentReports(crawlReport, jobs, results, model, { includeDesign });
   const crawlErrors = (crawlReport.pages || []).filter(page => page.status === 'error').map(page => page.url);
   const hasGaps = fleet.unassigned.length || fleet.unscheduledMissions.length || crawlErrors.length || fleet.stopReason;
   fleet.status = combined.status === 'completed' && hasGaps ? 'partial' : combined.status;

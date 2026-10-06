@@ -1,7 +1,11 @@
 #!/usr/bin/env node
 // Push a computer-use runner run onto the live canvas.
 //
-//   node canvas/scripts/push-run.mjs <runDir | report.json> [--canvas URL] [--live] [--clear] [--layout single] [--dry-run]
+//   node canvas/scripts/push-run.mjs <runDir | report.json> [--canvas URL] [--live] [--clear] [--layout single] [--include-design] [--dry-run]
+//
+// Only functional findings (observable broken behavior with steps, expected vs actual and evidence) are drawn.
+// Design opinions and incomplete findings are left out and listed on stderr; --include-design keeps design
+// findings at severity info.
 //
 // <runDir> holds report.json (runner) or qa-agent.json (agent / fleet), optionally qa-analysis.json.
 // Screenshots/videos are uploaded through POST <canvas>/api/upload and the returned url becomes the op src.
@@ -19,12 +23,13 @@ const emit = process.emitWarning;
 process.emitWarning = (w, ...rest) => (String(rest[0]?.code ?? rest[1] ?? "").includes("MODULE_TYPELESS_PACKAGE_JSON") ? undefined : emit.call(process, w, ...rest));
 
 function parseArgs(argv) {
-  const a = { _: [], live: false, clear: false, dry: false, layout: undefined, canvas: undefined, delay: undefined };
+  const a = { _: [], live: false, clear: false, dry: false, includeDesign: false, layout: undefined, canvas: undefined, delay: undefined };
   for (let i = 0; i < argv.length; i++) {
     const t = argv[i];
     if (t === "--live") a.live = true;
     else if (t === "--clear") a.clear = true;
     else if (t === "--dry-run") a.dry = true;
+    else if (t === "--include-design") a.includeDesign = true;
     else if (t === "--canvas") a.canvas = argv[++i];
     else if (t.startsWith("--canvas=")) a.canvas = t.slice(9);
     else if (t === "--layout") a.layout = argv[++i];
@@ -38,12 +43,13 @@ function parseArgs(argv) {
   return a;
 }
 
-const USAGE = `usage: node canvas/scripts/push-run.mjs <runDir|report.json> [--canvas URL] [--live] [--clear] [--layout journeys|single] [--delay ms] [--dry-run]
+const USAGE = `usage: node canvas/scripts/push-run.mjs <runDir|report.json> [--canvas URL] [--live] [--clear] [--layout journeys|single] [--delay ms] [--include-design] [--dry-run]
   --canvas URL  canvas base URL (default $CANVAS_URL or http://localhost:3000; base paths ok)
   --live        ~400ms between steps so the canvas animates as a watcher sees it (--delay overrides)
   --clear       wipe the board first (DELETE /api/state)
   --run-id ID   stable run identity (default report path + start time); prevents cross-run id collisions
   --x / --y N  placement origin; default appends below existing content
+  --include-design  also draw usability/visual findings (always severity info). Default: functional findings only
   --dry-run     print the ops, upload and post nothing`;
 
 async function exists(p) { try { await stat(p); return true; } catch { return false; } }
@@ -130,10 +136,17 @@ async function main() {
   const pruned = prune(report);
   const prunedCrawl = crawl === report ? pruned : crawl ? prune(crawl) : null;
 
+  let reported = false;
+  const onExcluded = (items) => {
+    if (reported) return;
+    reported = true;
+    console.error(`left out ${items.length} finding(s) (not functional, or missing steps / expected vs actual / evidence):`);
+    for (const x of items) console.error(`  - ${x.title} [${x.category}] ${x.reasons.join("; ")}`);
+  };
   for (const value of [args.x, args.y]) if (value !== undefined && !Number.isFinite(value)) throw new Error("--x and --y must be finite numbers");
   const idPrefix = `run-${createHash("sha256").update(args.runId ?? `${reportPath}:${report.startedAt ?? ""}`).digest("hex").slice(0, 12)}`;
   let origin = { x: args.x ?? 0, y: args.y ?? 0 };
-  const buildOps = (map) => runToOps({ report: pruned, crawl: prunedCrawl, analysis }, { srcMap: map, sizes, layout: args.layout, idPrefix, origin });
+  const buildOps = (map) => runToOps({ report: pruned, crawl: prunedCrawl, analysis }, { srcMap: map, sizes, layout: args.layout, idPrefix, origin, includeDesign: args.includeDesign, onExcluded });
 
   if (args.dry) {
     const fake = Object.fromEntries([...have].map((p) => [p, `/uploads/${path.basename(p)}`]));

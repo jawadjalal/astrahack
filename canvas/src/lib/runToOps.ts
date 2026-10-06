@@ -9,8 +9,13 @@
 // No I/O. Screenshot/video paths are mapped to hosted URLs through opts.srcMap / opts.srcFor
 // (scripts/push-run.mjs uploads the files first). Nothing is invented: a field missing from the bundle is
 // left off the op. Only erasable TypeScript here so Node can import this file directly.
+//
+// Only FUNCTIONAL findings (observable broken behavior, with steps, expected vs actual and evidence) become
+// finding cards. Design opinions and incomplete findings are dropped unless opts.includeDesign is set, in which
+// case they are kept at severity info with a [usability] / [visual] title prefix (the op has no category field).
 
 import type { Op } from "./ops";
+import { assessFinding } from "./findings-filter.mjs";
 
 export type Severity = "critical" | "high" | "medium" | "low" | "info";
 
@@ -38,6 +43,10 @@ export interface RunToOpsOptions {
   idPrefix?: string;
   /** Canvas offset for this run; the layout's title starts 400px above this origin. */
   origin?: { x: number; y: number };
+  /** keep usability/visual findings (always severity info). Default false: functional findings only */
+  includeDesign?: boolean;
+  /** called with every finding that was left out and why */
+  onExcluded?: (items: { title: string; category: string; reasons: string[] }[]) => void;
 }
 
 interface Region { x: number; y: number; w: number; h: number; unit?: string; label?: string; severity?: string; viewport?: { width: number; height: number } }
@@ -246,8 +255,30 @@ export function runToOps(bundle: any, opts: RunToOpsOptions = {}): Op[] {
   // ---- 2. normalise findings
   const drafts: FindingDraft[] = [];
   const usedKeys = new Set<string>();
-  const addDraft = (f: any, kind: "runner" | "agent" | "analysis") => {
-    const title = clip(f.summary ?? f.title ?? "Finding", 160);
+  const excluded: { title: string; category: string; reasons: string[] }[] = [];
+  // a raw crawler finding ({ type, url, actual, evidence }) is shaped like qa-analysis shapes it; the visited URL is its evidence
+  const fromCrawl = (f: any) =>
+    f && typeof f.type === "string" && f.summary == null && f.title == null
+      ? {
+          ...f,
+          summary: f.type.replaceAll("_", " "),
+          category: f.category ?? (["missing_title", "missing_h1"].includes(f.type) ? "usability" : "functional"),
+          expected: f.expected ?? (f.type === "http_error" ? "Page loads successfully" : "Page meets the checked condition"),
+          reproduction: f.reproduction ?? (f.url ? [`Open ${f.url}`] : []),
+          evidence: f.evidence ?? f.url,
+        }
+      : f;
+  const addDraft = (rawFinding: any, kind: "runner" | "agent" | "analysis") => {
+    const raw = kind === "runner" ? fromCrawl(rawFinding) : rawFinding;
+    // a scripted runner finding is a failed assertion a person wrote: its category is trusted, the wording is not judged
+    const verdict = assessFinding(raw, { includeDesign: opts.includeDesign, trustCategory: kind === "runner" });
+    if (!verdict.keep) {
+      excluded.push({ title: clip(raw?.summary ?? raw?.title ?? "Finding", 160), category: verdict.category, reasons: verdict.reasons });
+      return;
+    }
+    const f = verdict.finding;
+    const designTag = verdict.category === "functional" ? "" : `[${verdict.category}] `;
+    const title = clip(`${designTag}${f.summary ?? f.title ?? "Finding"}`, 160);
     let node: StepNode | undefined;
     if (typeof f.evidence === "string") node = byPath.get(f.evidence);
     if (!node && Number.isFinite(f.evidenceStep)) node = byIndex.get(f.evidenceStep);
@@ -295,6 +326,7 @@ export function runToOps(bundle: any, opts: RunToOpsOptions = {}): Op[] {
   if (!(analysis && report === crawl)) for (const f of report.findings ?? []) addDraft(f, "runner");
   if (analysis && Array.isArray(analysis.findings)) for (const f of analysis.findings) addDraft(f, "analysis");
   else for (const f of report.assessment?.issues ?? []) addDraft(f, "agent");
+  if (excluded.length) opts.onExcluded?.(excluded);
 
   const findingsByNode = new Map<string, FindingDraft[]>();
   const unattached: FindingDraft[] = [];

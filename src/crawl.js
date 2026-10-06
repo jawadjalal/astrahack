@@ -16,7 +16,7 @@ export function normalizeLink(raw, base, origin) {
   } catch { return null; }
 }
 
-export async function crawlSite({ url, output, chrome, maxPages = 50, maxDepth = 4, headless = true, onPage }) {
+export async function crawlSite({ url, output, chrome, maxPages = 50, maxDepth = 4, headless = true, includeDesign = false, onPage }) {
   if (!url || !chrome) throw new Error('crawlSite requires url and chrome');
   if (!Number.isInteger(maxPages) || maxPages < 1 || maxPages > 500) throw new Error('maxPages must be 1–500');
   if (!Number.isInteger(maxDepth) || maxDepth < 0 || maxDepth > 10) throw new Error('maxDepth must be 0–10');
@@ -26,7 +26,7 @@ export async function crawlSite({ url, output, chrome, maxPages = 50, maxDepth =
   await mkdir(join(out, 'screenshots'), { recursive: true });
   const report = {
     schemaVersion: 1, target: root.href, startedAt: new Date().toISOString(), finishedAt: null,
-    limits: { maxPages, maxDepth }, pages: [], observations: [], findings: [], assets: []
+    includeDesign, limits: { maxPages, maxDepth }, pages: [], observations: [], findings: [], assets: []
   };
   const queue = [{ url: root.href, depth: 0, discoveredFrom: null }];
   const queued = new Set([root.href]);
@@ -58,10 +58,13 @@ export async function crawlSite({ url, output, chrome, maxPages = 50, maxDepth =
         report.product ||= page.observation;
         page.links = [...new Set(page.observation.controls.filter(x => x.href).map(x => normalizeLink(x.href, page.finalUrl, root.origin)).filter(Boolean))];
         if (page.httpStatus && page.httpStatus >= 400) {
-          report.findings.push({ type: 'http_error', severity: 'high', url: item.url, actual: `HTTP ${page.httpStatus}`, evidence: asset });
+          report.findings.push({ type: 'http_error', category: 'functional', severity: 'high', url: item.url, actual: `HTTP ${page.httpStatus}`, evidence: asset });
         }
-        if (!page.observation.title) report.findings.push({ type: 'missing_title', severity: 'low', url: item.url, actual: 'Document title is empty', evidence: asset });
-        if (!page.observation.headings.some(x => x.level === 'h1')) report.findings.push({ type: 'missing_h1', severity: 'low', url: item.url, actual: 'No visible H1 heading', evidence: asset });
+        // Metadata checks are not broken behavior: recorded only with --include-design, always as info.
+        if (includeDesign) {
+          if (!page.observation.title) report.findings.push({ type: 'missing_title', category: 'usability', severity: 'info', url: item.url, actual: 'Document title is empty', evidence: asset });
+          if (!page.observation.headings.some(x => x.level === 'h1')) report.findings.push({ type: 'missing_h1', category: 'usability', severity: 'info', url: item.url, actual: 'No visible H1 heading', evidence: asset });
+        }
         if (item.depth < maxDepth) {
           for (const link of page.links) {
             if (!queued.has(link)) {
@@ -73,7 +76,7 @@ export async function crawlSite({ url, output, chrome, maxPages = 50, maxDepth =
       } catch (error) {
         page.status = 'error';
         page.error = error.message;
-        report.findings.push({ type: 'navigation_error', severity: 'high', url: item.url, actual: error.message, evidence: page.screenshot || null });
+        report.findings.push({ type: 'navigation_error', category: 'functional', severity: 'high', url: item.url, actual: error.message, evidence: page.screenshot || null });
       }
       await onPage?.(page, report);
       await writeFile(join(out, 'crawl.json'), JSON.stringify(report, null, 2) + '\n');

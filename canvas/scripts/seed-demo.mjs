@@ -2,12 +2,16 @@
 // Seeds a polished, believable demo teardown onto the canvas without the live agent.
 // Backup for stage: the board looks like a finished agent run.
 //
-//   node scripts/seed-demo.mjs [--canvas URL] [--live] [--no-clear]
+//   node scripts/seed-demo.mjs [--canvas URL] [--live] [--no-clear] [--dry-run]
+//
+// Every sample finding is FUNCTIONAL (observable broken behavior, see scripts/demo-findings.mjs); the script
+// refuses to post one that the findings filter would drop.
 //
 //   --canvas URL   canvas base URL (default $CANVAS_URL or http://localhost:3000).
 //                  Base-path aware: https://ignura.com/astrahack works (API = URL + /api/...).
 //   --live         post one op at a time with ~500ms delays so the canvas builds visibly.
 //   --no-clear     do not wipe the board first.
+//   --dry-run      print the ops as JSON, post nothing.
 //
 // The mock client app ("Fernly", a plant-care app) is drawn here as SVG data URLs, so no
 // uploads or network assets are needed except the sample video URL.
@@ -19,9 +23,12 @@ const opt = (n) => {
   return i >= 0 ? args[i + 1] : undefined;
 };
 if (flag("help") || flag("h")) {
-  console.log("usage: node scripts/seed-demo.mjs [--canvas URL] [--live] [--no-clear]");
+  console.log("usage: node scripts/seed-demo.mjs [--canvas URL] [--live] [--no-clear] [--dry-run]");
   process.exit(0);
 }
+
+import { assessFinding } from "../src/lib/findings-filter.mjs";
+import { DEMO_FINDINGS } from "./demo-findings.mjs";
 
 const CANVAS_URL = (opt("canvas") || process.env.CANVAS_URL || "http://localhost:3000").replace(/\/+$/, "");
 const LIVE = flag("live");
@@ -122,11 +129,12 @@ const frac = (x, y, w, h) => ({ x: +(x / W).toFixed(4), y: +(y / H).toFixed(4), 
 
 // Rects shared between the drawing code and the annotations
 const R = {
-  signupCta: [24, 456, 342, 56],
+  signupCta: [24, 484, 342, 56],
   paywallClose: [326, 52, 48, 48],
-  paywallFine: [20, 742, 350, 34],
+  homeBanner: [24, 152, 342, 104],
   homeBadge: [52, 760, 40, 36],
-  emptyGap: [24, 596, 342, 70],
+  reminderTime: [24, 356, 342, 56],
+  addPlant: [324, 72, 44, 44],
 };
 
 // 1. Onboarding
@@ -166,8 +174,8 @@ const screenSignup = () => {
       text(42, 371, "••••••••••", { size: 20, weight: 700 }) +
       text(348, 369, "Show", { size: 13.5, weight: 600, fill: C.green, anchor: "end" }) +
       check(420, "8+ characters") + check(444, "At least 1 number") +
-      // disabled-looking CTA even though both rules pass
-      button(R.signupCta[0], R.signupCta[1] + 28, R.signupCta[2], R.signupCta[3], "Create account", { fill: "#cdd3ce", color: "#f5f7f5" }) +
+      // a normal, enabled CTA: the bug is behavioural (the first tap is ignored), not how it looks
+      button(R.signupCta[0], R.signupCta[1], R.signupCta[2], R.signupCta[3], "Create account") +
       `<line x1="24" y1="568" x2="168" y2="568" stroke="${C.line}"/><line x1="222" y1="568" x2="366" y2="568" stroke="${C.line}"/>` +
       text(195, 573, "or", { size: 13.5, fill: C.mute, anchor: "middle" }) +
       button(24, 596, 342, 54, "Continue with Apple", { fill: "#111", color: "#fff", r: 14, size: 16 }) +
@@ -295,7 +303,7 @@ const screens = [
   { id: "s6-empty", label: "Empty garden", svg: screenEmpty() },
 ];
 
-const flowLabels = ["tap Get started", "tap Create account", "close paywall", "tap Settings", "fresh account"];
+const flowLabels = ["tap Get started", "tap Create account (2nd tap)", "relaunch app (x did nothing)", "tap Settings", "fresh account"];
 
 const ops = [];
 const add = (op, group) => ops.push({ op, group });
@@ -305,7 +313,7 @@ add({ type: "add_shape", id: "title", kind: "text", x: 0, y: -640, text: "Fernly
 add({ type: "update", id: "title", props: { size: "xl" } });
 add({ type: "add_shape", id: "subtitle", kind: "text", x: 0, y: -552, text: "iOS, test account. Observed, reproduced, explained, ranked." });
 add({ type: "update", id: "subtitle", props: { size: "m", color: "grey" } });
-add({ type: "add_shape", id: "legend", kind: "note", x: 0, y: -470, w: 220, h: 220, color: "yellow", text: "Verified = reproduced twice.\n\nUnverified = seen once, needs a second run." });
+add({ type: "add_shape", id: "legend", kind: "note", x: 0, y: -470, w: 220, h: 220, color: "yellow", text: "Verified = reproduced twice.\n\nUnverified = seen once, needs a second run.\n\nOnly functional issues: broken behavior, not taste." });
 
 // 2. screens left-to-right, with labelled arrows
 screens.forEach((s, i) => {
@@ -316,56 +324,35 @@ screens.forEach((s, i) => {
 // 3. run recording
 add({ type: "add_video", id: "run-video", src: VIDEO_URL, x: 1100, y: -520, w: 640, h: 360, label: "Run recording: full session" });
 
-// 4. problem spots (fractions of the screen)
-add({ type: "annotate", id: "ann-paywall-close", target: "s3-paywall", box: frac(...R.paywallClose), label: "Close button", severity: "critical" });
-add({ type: "annotate", id: "ann-paywall-price", target: "s3-paywall", box: frac(...R.paywallFine), label: "Price in 9px", severity: "high" });
-add({ type: "annotate", id: "ann-signup-cta", target: "s2-signup", box: frac(R.signupCta[0], R.signupCta[1] + 28, R.signupCta[2], R.signupCta[3]), label: "Looks disabled", severity: "high" });
+// 4. problem spots (fractions of the screen), one per finding
+add({ type: "annotate", id: "ann-paywall-close", target: "s3-paywall", box: frac(...R.paywallClose), label: "Close: no response", severity: "critical" });
+add({ type: "annotate", id: "ann-signup-cta", target: "s2-signup", box: frac(...R.signupCta), label: "First tap ignored", severity: "high" });
+add({ type: "annotate", id: "ann-home-banner", target: "s4-home", box: frac(...R.homeBanner), label: "Still says 3 after watering", severity: "high" });
+add({ type: "annotate", id: "ann-settings-time", target: "s5-settings", box: frac(...R.reminderTime), label: "Reverts to 8:00 AM", severity: "medium" });
 add({ type: "annotate", id: "ann-home-badge", target: "s4-home", box: frac(...R.homeBadge), label: "Badge says 5", severity: "medium" });
-add({ type: "annotate", id: "ann-empty-cta", target: "s6-empty", box: frac(...R.emptyGap), label: "No next step", severity: "low" });
+add({ type: "annotate", id: "ann-empty-plus", target: "s6-empty", box: frac(...R.addPlant), label: "+ does nothing", severity: "medium" });
 
-// 5. findings, ranked #1..#6, each linked to its screen
-const fx = (i, dx = 15) => SX(i) + dx;
-add({
-  type: "add_finding", id: "f1-paywall-close", x: 2 * PITCH - 175, y: FY, severity: "critical", verified: true, target: "s3-paywall", timestamp: 2,
-  title: "#1 The paywall has no visible way to close it",
-  expected: "A clear close button so a user can skip to the free plan.",
-  actual: "The close icon is 15px, 28% opacity on dark green. 2 of 5 taps missed it. Swipe-back is disabled. The only exit looks like Start free trial.",
-});
-add({
-  type: "add_finding", id: "f2-paywall-price", x: 2 * PITCH + 225, y: FY, severity: "high", verified: true, target: "s3-paywall", timestamp: 3,
-  title: "#2 The real price is hidden in 9px text",
-  expected: "The billed amount sits next to the trial button.",
-  actual: "The card says $5.00/mo. $59.99 billed yearly appears once, in 9px at 32% opacity under the button.",
-});
-add({
-  type: "add_finding", id: "f3-signup-cta", x: fx(1), y: FY, severity: "high", verified: true, target: "s2-signup", timestamp: 1,
-  title: "#3 Create account looks disabled when the form is valid",
-  expected: "The button turns green once email and password pass.",
-  actual: "Both rules show a green tick, but the button stays grey until the user taps outside the field. Reproduced on two fresh accounts.",
-});
-add({
-  type: "add_finding", id: "f4-home-badge", x: fx(3), y: FY, severity: "medium", verified: false, target: "s4-home", timestamp: 4,
-  title: "#4 Home badge count does not match the reminder list",
-  expected: "The badge equals the number of plants due (3).",
-  actual: "The tab badge reads 5. The card and the list both show 3. Seen once; needs a second run.",
-});
-add({
-  type: "add_finding", id: "f5-restore", x: fx(4), y: FY, severity: "medium", verified: false, target: "s5-settings", timestamp: 4,
-  title: "#5 No Restore purchases entry in Settings",
-  expected: "Restore purchases is reachable from Settings.",
-  actual: "Only reachable from the paywall footer, which a subscriber never sees again. Seen once; needs a second run.",
-});
-add({
-  type: "add_finding", id: "f6-empty", x: fx(5), y: FY, severity: "low", verified: true, target: "s6-empty", timestamp: 5,
-  title: "#6 The empty garden gives no next step",
-  expected: "A primary Add your first plant button.",
-  actual: "Text only. The add action is a 36px plus icon in the top corner. Reproduced twice.",
-});
+// 5. findings, ranked #1..#6, each linked to its screen. Content lives in demo-findings.mjs.
+// x offsets: one card under its screen; two cards under the same screen sit either side of it.
+const cardX = (f) => {
+  const same = DEMO_FINDINGS.filter((g) => g.screen === f.screen);
+  const slot = same.indexOf(f);
+  return same.length === 1 ? SX(f.screen) + 15 : SX(f.screen) + (slot === 0 ? -175 : 225);
+};
+for (const f of DEMO_FINDINGS) {
+  // the sample board must obey its own rule: functional, with steps, expected vs actual and evidence
+  const verdict = assessFinding({ ...f, category: "functional", summary: f.title, evidenceStep: f.screen + 1 });
+  if (!verdict.keep) throw new Error(`demo finding ${f.id} is not a functional finding: ${verdict.reasons.join("; ")}`);
+  add({
+    type: "add_finding", id: f.id, x: cardX(f), y: FY, severity: f.severity, verified: f.verified, target: screens[f.screen].id, timestamp: f.timestamp,
+    title: `#${f.rank} ${f.title}`, expected: f.expected, actual: f.actual,
+  });
+}
 
 // 6. summary of what to fix first
 add({
   type: "add_shape", id: "summary", kind: "rectangle", x: 280, y: -470, w: 700, h: 300, color: "orange",
-  text: "Fix first\n1. Paywall: add a visible close button\n2. Paywall: show the billed price by the button\n3. Sign up: enable the button when the form is valid\n4. Home: fix the badge count (verify)\n5. Settings: add Restore purchases (verify)\n6. Empty garden: add a primary action",
+  text: "Fix first\n1. Paywall: make the close button work\n2. Sign up: act on the first tap\n3. Home: update the reminder count after watering\n4. Settings: save the reminder time\n5. Home: fix the badge count (verify)\n6. Garden: make + open Add plant (verify)",
 });
 
 // 7. the board, framed
@@ -395,6 +382,10 @@ async function post(body) {
 }
 
 async function main() {
+  if (flag("dry-run")) {
+    console.log(JSON.stringify(ops.map((o) => o.op), null, 2));
+    return;
+  }
   console.log(`Seeding ${CANVAS_URL} (${ops.length} ops${LIVE ? ", live" : ""})`);
   if (!flag("no-clear")) await post({ type: "clear" });
   if (!LIVE) {

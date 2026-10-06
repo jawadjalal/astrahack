@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { analyzeQa, evidenceCatalog } from '../src/qa-analysis.js';
+import { analyzeQa, buildSchema, evidenceCatalog, systemPrompt } from '../src/qa-analysis.js';
+import { FUNCTIONAL_DEFINITION } from '../src/findings-filter.js';
 
 test('report prioritizes recorded failures and labels model ideas as hypotheses', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'astrahack-analysis-'));
@@ -20,8 +21,11 @@ test('report prioritizes recorded failures and labels model ideas as hypotheses'
       payload = value;
       return { output: [{ type: 'message', content: [{ type: 'output_text', text: JSON.stringify({
         productSummary: 'A project tool', observedFeatures: [{ name: 'Projects', evidenceRefs: ['C001', 'FAKE'] }],
-        candidateFindings: [{ summary: 'Possible unclear CTA', severity: 'low', expected: 'Clear action', actual: 'Ambiguous wording', reproduction: ['Open home'], evidenceRefs: ['C001', 'FAKE'], uncertainty: 'Visual interpretation only' },
-          { summary: 'Invented', severity: 'critical', expected: 'X', actual: 'Y', reproduction: [], evidenceRefs: ['FAKE'], uncertainty: 'Unknown' }], limitations: ['No mobile view']
+        candidateFindings: [{ summary: 'Start a project link goes nowhere', category: 'functional', severity: 'low', expected: 'The project form opens', actual: 'The page does not change after the click', reproduction: ['Open home', 'Click Start a project'], evidenceRefs: ['C001', 'FAKE'], uncertainty: 'Visual interpretation only' },
+          { summary: 'Possible unclear CTA', category: 'functional', severity: 'low', expected: 'Clear action', actual: 'Ambiguous wording', reproduction: ['Open home'], evidenceRefs: ['C001'], uncertainty: 'Taste' },
+          { summary: 'Hero font looks dated', category: 'visual', severity: 'high', expected: 'Modern type', actual: 'Looks dated', reproduction: ['Open home'], evidenceRefs: ['C001'], uncertainty: 'Taste' },
+          { summary: 'Checkout fails', category: 'functional', severity: 'high', expected: 'Order placed', actual: 'An error banner', reproduction: [], evidenceRefs: ['C001'], uncertainty: 'No steps' },
+          { summary: 'Invented', category: 'functional', severity: 'critical', expected: 'X', actual: 'Y', reproduction: [], evidenceRefs: ['FAKE'], uncertainty: 'Unknown' }], limitations: ['No mobile view']
       }) }] }] };
     };
     const { report } = await analyzeQa(dir, { request, includeImages: false });
@@ -29,6 +33,12 @@ test('report prioritizes recorded failures and labels model ideas as hypotheses'
     assert.equal(payload.store, false);
     assert.equal(report.findings.length, 3);
     assert.deepEqual(report.findings.map(f => f.verification), ['recorded', 'agent_reported', 'hypothesis']);
+    assert.deepEqual(report.findings.map(f => f.category), ['functional', 'functional', 'functional']);
+    // design opinions, speculation, and candidates without steps or evidence are left out and listed
+    assert.deepEqual(report.excludedFindings.map(f => f.summary).sort(), ['Checkout fails', 'Hero font looks dated', 'Possible unclear CTA']);
+    assert.match(report.excludedFindings.find(f => f.summary === 'Checkout fails').reasons.join(), /reproduction steps/);
+    assert.equal(payload.text.format.schema.properties.candidateFindings.items.properties.category.enum.length, 1);
+    assert.match(await readFile(join(dir, 'qa-analysis.md'), 'utf8'), /3 candidate finding\(s\) were left out/);
     assert.deepEqual(report.findings[2].evidenceRefs, ['C001']);
     assert.deepEqual(report.observedFeatures[0].evidenceRefs, ['C001']);
     assert.match(await readFile(join(dir, 'qa-analysis.md'), 'utf8'), /CF001: crawl\.json/);
@@ -137,4 +147,34 @@ test('requires at least one evidence file', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'astrahack-analysis-'));
   try { await assert.rejects(analyzeQa(dir), /needs crawl\.json or qa-agent\.json/); }
   finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('the analysis prompt and schema require the functional definition; --include-design widens them', () => {
+  const strict = buildSchema().properties.candidateFindings.items;
+  assert.deepEqual(strict.properties.category.enum, ['functional']);
+  assert.ok(!strict.properties.severity.enum.includes('info'));
+  for (const key of ['category', 'expected', 'actual', 'reproduction', 'evidenceRefs']) assert.ok(strict.required.includes(key), key);
+  const wide = buildSchema({ includeDesign: true }).properties.candidateFindings.items;
+  assert.deepEqual(wide.properties.category.enum, ['functional', 'usability', 'visual']);
+  assert.ok(wide.properties.severity.enum.includes('info'));
+  assert.ok(systemPrompt().includes(FUNCTIONAL_DEFINITION));
+  assert.match(systemPrompt(), /Do not report design or usability opinions/);
+  assert.match(systemPrompt({ includeDesign: true }), /severity "info"/);
+});
+
+test('--include-design keeps design findings at severity info, after the functional ones', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'astrahack-analysis-'));
+  try {
+    const crawl = { target: 'https://example.test/', pages: [{ url: 'https://example.test/', status: 'visited', observation: { title: 'Demo' } }],
+      findings: [{ type: 'missing_h1', category: 'usability', severity: 'info', url: 'https://example.test/', actual: 'No visible H1 heading', evidence: null },
+        { type: 'http_error', severity: 'high', url: 'https://example.test/missing', actual: 'HTTP 404', evidence: null }] };
+    await writeFile(join(dir, 'crawl.json'), JSON.stringify(crawl));
+    const draft = { productSummary: 'x', observedFeatures: [], candidateFindings: [], limitations: [] };
+    const request = async () => ({ output: [{ type: 'message', content: [{ type: 'output_text', text: JSON.stringify(draft) }] }] });
+    const strict = await analyzeQa(dir, { request, includeImages: false });
+    assert.deepEqual(strict.report.findings.map(f => f.summary), ['http error']);
+    assert.equal(strict.report.excludedFindings.length, 1);
+    const wide = await analyzeQa(dir, { request, includeImages: false, includeDesign: true });
+    assert.deepEqual(wide.report.findings.map(f => [f.summary, f.category, f.severity]), [['http error', 'functional', 'high'], ['missing h1', 'usability', 'info']]);
+  } finally { await rm(dir, { recursive: true, force: true }); }
 });

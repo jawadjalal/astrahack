@@ -126,8 +126,11 @@ export function designMarkers(f) {
 
 // 'functional' | 'usability' | 'visual': the producer's explicit category wins, but an explicit "functional"
 // that reads as pure taste is overruled. A missing category is inferred from the wording.
-export function categoryOf(f) {
+// trustCategory skips the wording heuristics: for producers whose findings are failed assertions written by a
+// person (the scripted runner), where the observed page text can contain any word.
+export function categoryOf(f, { trustCategory = false } = {}) {
   const explicit = normalizeCategory(f?.category);
+  if (trustCategory) return explicit || 'functional';
   if (explicit && explicit !== 'functional') return explicit;
   const markers = designMarkers(f);
   if (!markers.length) return 'functional';
@@ -136,8 +139,8 @@ export function categoryOf(f) {
 
 // -> { keep, category, reasons[], finding }. finding is a copy carrying the final category; a design finding
 // that is kept (includeDesign) is forced to severity "info". Dropped findings keep their reasons for the report.
-export function assessFinding(f, { includeDesign = false } = {}) {
-  const category = categoryOf(f);
+export function assessFinding(f, { includeDesign = false, trustCategory = false } = {}) {
+  const category = categoryOf(f, { trustCategory });
   const reasons = [];
   if (category !== 'functional') {
     const markers = designMarkers(f);

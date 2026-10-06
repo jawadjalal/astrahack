@@ -6,8 +6,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { crawlSite, normalizeLink } from '../src/crawl.js';
-import { runQaAgent, executeComputerAction } from '../src/qa-agent.js';
+import { runQaAgent, executeComputerAction, buildAssessmentSchema, qaTaskPrompt } from '../src/qa-agent.js';
 import { findChromeForTests } from '../src/chrome-path.js';
+import { FUNCTIONAL_DEFINITION } from '../src/findings-filter.js';
 
 const chrome = findChromeForTests() || '';
 
@@ -24,10 +25,14 @@ test('bounded crawler inventories linked pages and writes evidence', { skip: !ex
     const home = join(directory, 'home.html');
     await writeFile(home, '<title>Home</title><h1>Home</h1><a href="features.html">Features</a><a href="https://other.test/">External</a>');
     await writeFile(join(directory, 'features.html'), '<h2>Feature details</h2><p>Useful feature.</p>');
-    const { out, report } = await crawlSite({ url: pathToFileURL(home).href, output: join(directory, 'run'), chrome, maxPages: 2 });
+    const { out, report } = await crawlSite({ url: pathToFileURL(home).href, output: join(directory, 'run'), chrome, maxPages: 2, includeDesign: true });
     assert.equal(report.pages.length, 2);
     assert.equal(report.pages[1].depth, 1);
-    assert.ok(report.findings.some(finding => finding.type === 'missing_h1'));
+    // page metadata checks are design-level: only recorded with includeDesign, as usability/info
+    const h1 = report.findings.find(finding => finding.type === 'missing_h1');
+    assert.deepEqual([h1.category, h1.severity], ['usability', 'info']);
+    const strict = await crawlSite({ url: pathToFileURL(home).href, output: join(directory, 'strict'), chrome, maxPages: 2 });
+    assert.deepEqual(strict.report.findings, []);
     assert.ok((await stat(join(out, report.pages[1].screenshot))).size > 100);
     assert.equal(JSON.parse(await readFile(join(out, 'crawl.json'), 'utf8')).pages.length, 2);
   } finally { await rm(directory, { recursive: true, force: true }); }
@@ -47,15 +52,21 @@ test('Luna computer loop records actions and verifies evidence references', { sk
       return { id: 'resp-2', status: 'completed', output: [{ type: 'message', content: [{
         type: 'output_text', text: JSON.stringify({
           productUnderstanding: 'Fixture product', observedFeatures: ['Home'], journeysExercised: ['Initial view'],
-          issues: [{ summary: 'Example issue', severity: 'low', expected: 'Expected', actual: 'Actual', reproduction: ['Open fixture'], evidenceStep: 1 }], limitations: []
+          issues: [{ summary: 'Example issue', category: 'functional', severity: 'low', expected: 'Expected', actual: 'Actual', reproduction: ['Open fixture'], evidenceStep: 1 },
+            { summary: 'Heading font looks dated', category: 'visual', severity: 'high', expected: 'Modern', actual: 'Looks dated', reproduction: ['Open fixture'], evidenceStep: 1 },
+            { summary: 'Button does nothing', category: 'functional', severity: 'high', expected: 'Opens', actual: 'No effect', reproduction: ['Open fixture'], evidenceStep: 99 }], limitations: []
         })
       }] }] };
     };
     const { out, report } = await runQaAgent({ url: pathToFileURL(fixture).href, output: join(directory, 'run'), chrome, request, maxTurns: 2 });
     assert.equal(report.status, 'completed', report.error);
     assert.equal(report.steps.length, 1);
+    assert.equal(report.assessment.issues.length, 1);
     assert.equal(report.assessment.issues[0].evidence, report.steps[0].screenshot);
     assert.equal(calls[0].model, 'gpt-6-luna');
+    assert.deepEqual(report.assessment.excludedIssues.map(i => i.summary), ['Heading font looks dated', 'Button does nothing']);
+    assert.match(report.assessment.excludedIssues[1].reasons.join(), /evidence/);
+    assert.deepEqual(calls[0].text.format.schema.properties.issues.items.properties.category.enum, ['functional']);
     assert.equal(calls[1].previous_response_id, 'resp-1');
     assert.equal(calls[1].tool_choice, 'none', 'Final turn must summarize observed evidence');
     assert.deepEqual(calls[1].tools, [{ type: 'computer' }], 'Computer outputs require the tool to stay enabled');
@@ -72,4 +83,20 @@ test('QA action guard blocks external links and consequential buttons', async ()
   await assert.rejects(executeComputerAction(external, { type: 'click', x: 10, y: 10 }, 'https://site.test'), /External link blocked/);
   const dangerous = { eval: async () => ({ href: null, label: 'Delete account' }) };
   await assert.rejects(executeComputerAction(dangerous, { type: 'click', x: 10, y: 10 }, 'https://site.test'), /Consequential action blocked/);
+});
+
+test('QA agent prompt and schema state the functional definition; --include-design widens them', () => {
+  const origin = 'https://site.test';
+  const strict = qaTaskPrompt({ origin, brief: 'Check checkout' });
+  assert.ok(strict.includes(FUNCTIONAL_DEFINITION));
+  assert.match(strict, /Do not report design or usability opinions/);
+  assert.match(strict, /Check checkout/);
+  assert.match(qaTaskPrompt({ origin, includeDesign: true }), /severity "info"/);
+  const issue = schema => schema.properties.issues.items;
+  assert.deepEqual(issue(buildAssessmentSchema()).properties.category.enum, ['functional']);
+  assert.ok(!issue(buildAssessmentSchema()).properties.severity.enum.includes('info'));
+  for (const key of ['category', 'expected', 'actual', 'reproduction', 'evidenceStep']) assert.ok(issue(buildAssessmentSchema()).required.includes(key), key);
+  const wide = issue(buildAssessmentSchema({ includeDesign: true }));
+  assert.deepEqual(wide.properties.category.enum, ['functional', 'usability', 'visual']);
+  assert.ok(wide.properties.severity.enum.includes('info'));
 });

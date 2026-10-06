@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { defaultFleetConcurrency, planFleet, runFleet } from '../src/fleet.js';
+import { combineAgentReports, defaultFleetConcurrency, planFleet, runFleet } from '../src/fleet.js';
 import { findChromeForTests } from '../src/chrome-path.js';
 
 const page = (url, controls = []) => ({
@@ -292,4 +292,17 @@ test('a recovered crawl failure receives three distinct scouts', async () => {
   assert.deepEqual(result.fleet.jobs.map(job => job.mission), ['journey', 'feature_map', 'controls']);
   assert.equal(result.fleet.coverage.completedAgents, 3);
   assert.equal(result.fleet.status, 'partial');
+});
+
+test('merged fleet report keeps only functional issues with real evidence, and lists what it left out', () => {
+  const issue = over => ({ summary: 'Add to cart does nothing', category: 'functional', severity: 'high', expected: 'Cart count rises', actual: 'No change', reproduction: ['Open product', 'Click Add'], evidenceStep: 1, evidence: 'screenshots/001.png', ...over });
+  const worker = issues => ({ report: { status: 'completed', steps: [{ index: 1, type: 'click', status: 'passed', screenshot: 'screenshots/001.png' }],
+    assets: [], assessment: { issues, excludedIssues: [{ summary: 'Earlier worker drop', category: 'visual', reasons: ['x'] }], observedFeatures: [], journeysExercised: [], limitations: [] }, limitations: [] } });
+  const jobs = [{ id: 'A001', mission: 'journey', url: 'https://site.test/' }];
+  const results = [worker([issue(), issue({ summary: 'Hero color looks off', category: 'visual', actual: 'Looks off' }), issue({ summary: 'Search fails', evidenceStep: 42 }), issue({ summary: 'Checkout errors', reproduction: [] })])];
+  const combined = combineAgentReports({ target: 'https://site.test/' }, jobs, results);
+  assert.deepEqual(combined.assessment.issues.map(i => i.summary), ['Add to cart does nothing']);
+  assert.deepEqual(combined.assessment.excludedIssues.map(i => i.summary).sort(), ['Checkout errors', 'Earlier worker drop', 'Hero color looks off', 'Search fails']);
+  const wide = combineAgentReports({ target: 'https://site.test/' }, jobs, results, undefined, { includeDesign: true });
+  assert.deepEqual(wide.assessment.issues.map(i => [i.summary, i.severity]), [['Add to cart does nothing', 'high'], ['Hero color looks off', 'info']]);
 });

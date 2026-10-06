@@ -6,7 +6,7 @@ import { runFleet } from '../src/fleet.js';
 
 try { process.loadEnvFile('.env'); } catch (error) { if (error.code !== 'ENOENT') throw error; }
 
-const usage = 'Usage: node bin/qa.js <crawl|agent|fleet> <config.json> [--output DIR] [--chrome PATH] [--model MODEL] [--max-requests N] [--max-agents N] [--concurrency N] [--max-turns N] [--max-duration-ms N] [--headed]';
+const usage = 'Usage: node bin/qa.js <crawl|agent|fleet> <config.json> [--output DIR] [--chrome PATH] [--model MODEL] [--max-requests N] [--max-agents N] [--concurrency N] [--max-turns N] [--max-duration-ms N] [--headed] [--include-design]\nFindings are functional bugs only by default; --include-design also keeps usability/visual observations at severity info.';
 const numericFlags = { '--max-requests': 'maxRequests', '--max-agents': 'maxAgents', '--concurrency': 'concurrency', '--max-turns': 'maxTurns', '--max-duration-ms': 'maxDurationMs', '--max-output-tokens': 'maxOutputTokens' };
 
 try {
@@ -18,6 +18,7 @@ try {
   while (args.length) {
     const flag = args.shift();
     if (flag === '--headed') options.headless = false;
+    else if (flag === '--include-design') options.includeDesign = true;
     else if (flag === '--output' || flag === '--chrome' || flag === '--model') {
       if (!args.length) throw new Error(`${flag} needs a value`);
       options[flag.slice(2)] = args.shift();

@@ -2,6 +2,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { basename, join, resolve } from 'node:path';
 import { spawn } from 'node:child_process';
 import { attach, launchBrowser } from './cdp.js';
+import { assessFinding, excludedSummary, normalizeCategory } from './findings-filter.js';
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const safe = value => String(value).replace(/[^a-z0-9_-]+/gi, '-').slice(0, 60);
@@ -194,7 +195,7 @@ export async function run(config, options = {}) {
   const report = {
     schemaVersion: 1, name: config.name || basename(out), target: config.target,
     startedAt: stamp(), finishedAt: null, status: 'running',
-    product: null, journeys: [], findings: [], assets: [], limitations: []
+    product: null, journeys: [], findings: [], excludedFindings: [], assets: [], limitations: []
   };
   // A local evidence path is the stable reference; downstream agents should not infer claims from filenames.
   const save = () => writeFile(join(out, 'report.json'), JSON.stringify(report, null, 2) + '\n');
@@ -248,14 +249,20 @@ export async function run(config, options = {}) {
             report.assets.push({ type: 'screenshot', path: asset, journey: journey.name, step: index });
           } catch (error) { entry.captureError = error.message; }
           if (entry.status === 'failed') {
-            report.findings.push({
+            // A failed assertion or action is observed broken behavior, so it is functional unless the journey
+            // author labeled the step otherwise (category: usability | visual), which needs --include-design.
+            const candidate = {
               id: `QA-${String(report.findings.length + 1).padStart(3, '0')}`,
+              category: normalizeCategory(step.category) || 'functional',
               severity: step.severity || 'medium', journey: journey.name,
               summary: step.failureSummary || `${step.action} failed`,
               expected: step.expected || `${step.action} should complete successfully`,
               actual: entry.error, stepsToReproduce: record.steps.map(s => ({ action: s.action, selector: s.selector, url: s.url, text: s.text })),
-              evidence: entry.screenshot || null, observedAt: entry.finishedAt
-            });
+              evidence: entry.screenshot || null, evidenceStep: index, observedAt: entry.finishedAt
+            };
+            const verdict = assessFinding(candidate, { includeDesign: options.includeDesign, trustCategory: true });
+            if (verdict.keep) report.findings.push(verdict.finding);
+            else report.excludedFindings.push(excludedSummary({ finding: candidate, category: verdict.category, reasons: verdict.reasons }));
             break;
           }
         }
@@ -271,7 +278,7 @@ export async function run(config, options = {}) {
         await save();
       }
     }
-    report.status = report.findings.length ? 'findings' : 'passed';
+    report.status = report.findings.length || report.journeys.some(j => j.status === 'failed') ? 'findings' : 'passed';
   } catch (error) {
     report.status = 'error';
     report.error = error.message;

@@ -106,7 +106,7 @@ test("QA analysis findings: Q-refs attach to steps, verification and severity ma
   assert.equal(byTitle["Add-to-cart button does nothing"].target, "step-2");
   assert.equal(byTitle["Add-to-cart button does nothing"].verified, false); // agent_reported
   assert.equal(byTitle["Add-to-cart button does nothing"].severity, "critical");
-  assert.equal(byTitle["Possibly unclear pricing CTA"].verified, false); // hypothesis
+  assert.equal(byTitle["Pricing Buy button leads nowhere"].verified, false); // hypothesis
   assert.equal(byTitle["Checkout 500s"].verified, true); // recorded
   assert.equal(byTitle["Checkout 500s"].severity, "critical"); // blocker
   assert.equal(byTitle["Checkout 500s"].target, undefined); // crawl evidence has no step image
@@ -122,7 +122,7 @@ test("agent / fleet bundle: steps[] grouped by worker, assessment issues become 
       { index: 2, type: "type", action: { type: "type", text: "[redacted]" }, status: "blocked_or_failed", screenshot: "workers/A001/screenshots/002-type.png", workerId: "A001" },
       { index: 3, type: "scroll", action: { type: "scroll", x: 5, y: 5, scroll_y: 300 }, status: "passed", screenshot: "workers/A002/screenshots/001-scroll.png", workerId: "A002" },
     ],
-    assessment: { issues: [{ summary: "Search ignored input", severity: "medium", expected: "Results", actual: "Nothing", evidenceStep: 2, evidence: "workers/A001/screenshots/002-type.png", verification: "agent_reported" }] },
+    assessment: { issues: [{ summary: "Search ignored input", severity: "medium", expected: "Results", actual: "Nothing", reproduction: ["Type a query", "Press Enter"], evidenceStep: 2, evidence: "workers/A001/screenshots/002-type.png", verification: "agent_reported" }] },
   };
   const o = runToOps(agent);
   const imgs = o.filter((x) => x.type === "add_image");
@@ -182,4 +182,48 @@ test("empty / foreign input does not throw", () => {
   const o = runToOps({});
   assert.equal(o[0].id, "run-title");
   assert.equal(o.at(-1).type, "focus");
+});
+
+// ---- functional-only findings --------------------------------------------------------------------------
+const design = (over = {}) => ({ id: "D1", severity: "high", summary: "Hero font looks dated", expected: "Modern type", actual: "Looks dated", reproduction: ["Open home"], evidenceRefs: ["Q002"], verification: "agent_reported", ...over });
+const withAnalysis = (findings, opts = {}) => runToOps(report, { srcMap, analysis: { findings }, ...opts }).filter((o) => o.type === "add_finding");
+
+test("design opinions never become finding cards by default", () => {
+  const dropped = [];
+  const fs = withAnalysis(
+    [design(), design({ id: "D2", summary: "Possibly unclear pricing CTA", expected: "A clear action", actual: "Ambiguous wording" }),
+     design({ id: "D3", category: "visual", summary: "Checkout does nothing", actual: "Nothing happens" })],
+    { onExcluded: (x) => dropped.push(...x) },
+  );
+  assert.deepEqual(fs.map((f) => f.title), ["Cart shows no order total"], "only the runner's functional finding remains");
+  assert.equal(dropped.length, 3);
+  assert.match(dropped[0].reasons[0], /design or taste opinion/);
+  assert.equal(dropped[2].category, "visual");
+});
+
+test("findings without steps, evidence, or expected and actual are dropped", () => {
+  const fs = withAnalysis([
+    design({ id: "F1", summary: "Add to cart does nothing", actual: "No effect" }),
+    design({ id: "F2", summary: "Checkout fails", actual: "An error", reproduction: [] }),
+    design({ id: "F3", summary: "Search fails", actual: "An error", evidenceRefs: [] }),
+    design({ id: "F4", summary: "Login fails", actual: "", expected: "" }),
+  ]);
+  assert.deepEqual(fs.map((f) => f.title).sort(), ["Add to cart does nothing", "Cart shows no order total"]);
+});
+
+test("--include-design keeps design findings, prefixed and at severity info", () => {
+  const fs = withAnalysis([design({ category: "visual" }), design({ id: "D2", category: "usability", severity: "critical", summary: "Confusing flow wording", actual: "Wording is vague" })], { includeDesign: true });
+  const byTitle = Object.fromEntries(fs.map((f) => [f.title, f]));
+  assert.equal(byTitle["[visual] Hero font looks dated"].severity, "info");
+  assert.equal(byTitle["[usability] Confusing flow wording"].severity, "info");
+  assert.equal(byTitle["Cart shows no order total"].severity, "high");
+});
+
+test("a scripted runner failure keeps its category even when the observed text mentions design words", () => {
+  const r = structuredClone(report);
+  r.findings[0].actual = 'Expected page text "Order total"; observed "Choose a color and font. We recommend the large size."';
+  assert.equal(runToOps(r, { srcMap }).filter((o) => o.type === "add_finding").length, 1);
+  r.findings[0].category = "visual";
+  assert.equal(runToOps(r, { srcMap }).filter((o) => o.type === "add_finding").length, 0);
+  assert.equal(runToOps(r, { srcMap, includeDesign: true }).filter((o) => o.type === "add_finding").length, 1);
 });

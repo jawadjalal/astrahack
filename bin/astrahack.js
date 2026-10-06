@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { run } from '../src/runner.js';
 
 function usage() {
-  console.log('Usage: node bin/astrahack.js <journey.json> [--output DIR] [--chrome PATH] [--ffmpeg PATH] [--headed]');
+  console.log('Usage: node bin/astrahack.js <journey.json> [--output DIR] [--chrome PATH] [--ffmpeg PATH] [--headed] [--include-design]');
 }
 
 function parse(args) {
@@ -13,6 +13,7 @@ function parse(args) {
   while (args.length) {
     const arg = args.shift();
     if (arg === '--headed') options.headless = false;
+    else if (arg === '--include-design') options.includeDesign = true;
     else if (['--output', '--chrome', '--ffmpeg'].includes(arg)) {
       if (!args.length) throw new Error(`${arg} needs a value`);
       options[arg.slice(2)] = args.shift();

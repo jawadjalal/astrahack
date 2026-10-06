@@ -30,6 +30,9 @@ test('website journey produces observations, evidence, and reproducible QA findi
         ] },
         { name: 'Reported failure', steps: [
           { action: 'assertText', text: 'Impossible text', expected: 'Confirmation should be visible', severity: 'high' }
+        ] },
+        { name: 'Taste check', steps: [
+          { action: 'assertText', text: 'Beautiful hero', category: 'visual', failureSummary: 'Hero copy is bland' }
         ] }
       ]
     }, { output: directory, chrome, ffmpeg: process.env.ASTRAHACK_FFMPEG });
@@ -39,6 +42,11 @@ test('website journey produces observations, evidence, and reproducible QA findi
     assert.equal(report.journeys[0].status, 'passed');
     assert.equal(report.journeys[1].status, 'failed');
     assert.equal(report.findings[0].severity, 'high');
+    assert.equal(report.findings[0].category, 'functional');
+    assert.equal(report.findings[0].evidenceStep, 4);
+    // a step the author labeled visual is not a finding unless the run opted in
+    assert.equal(report.findings.length, 1);
+    assert.deepEqual(report.excludedFindings.map(f => [f.summary, f.category]), [['Hero copy is bland', 'visual']]);
     assert.match(report.findings[0].actual, /Impossible text/);
     assert.equal(report.findings[0].stepsToReproduce[0].action, 'assertText');
     assert.ok((await stat(join(out, report.findings[0].evidence))).size > 100);
