@@ -184,7 +184,7 @@ export default function Canvas() {
       data-present={present || undefined}
       style={{ position: "fixed", inset: 0 }}
     >
-      <Tldraw shapeUtils={customShapeUtils} themes={themes} components={components} onMount={handleMount} />
+      <Tldraw licenseKey={process.env.NEXT_PUBLIC_TLDRAW_LICENSE_KEY} shapeUtils={customShapeUtils} themes={themes} components={components} onMount={handleMount} />
 
       {editor && (
         <>
