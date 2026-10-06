@@ -94,7 +94,7 @@ export async function launchBrowser({ executable, headless = true, width = 1280,
   child.on('error', error => { launchError = error; });
   const portFile = join(profile, 'DevToolsActivePort');
   let port;
-  for (let i = 0; i < 100; i++) {
+  for (let i = 0; i < 300; i++) { // up to 30 s: Chrome can take >10 s to start on a loaded laptop
     if (launchError || child.exitCode !== null || child.signalCode !== null) break;
     try { port = Number((await readFile(portFile, 'utf8')).split('\n')[0]); break; } catch {}
     await sleep(100);

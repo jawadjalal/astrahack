@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { runWorker, workerPreflight } from '../src/web-run-worker.js';
+import { findChrome } from '../src/chrome-path.js';
 
 try { process.loadEnvFile('.env'); } catch (error) { if (error.code !== 'ENOENT') throw error; }
 
@@ -23,7 +24,7 @@ try {
     const options = {
       canvasUrl: process.env.CANVAS_URL || 'https://ignura.com/astrahack',
       token: process.env.ASTRAHACK_WORKER_TOKEN,
-      chrome: process.env.ASTRAHACK_CHROME,
+      chrome: process.env.ASTRAHACK_CHROME || findChrome() || undefined,
     };
     await workerPreflight(options);
     console.log('Worker ready. Waiting for website URLs.');

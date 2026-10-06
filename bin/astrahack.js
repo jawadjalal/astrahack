@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { readFile } from 'node:fs/promises';
 import { run } from '../src/runner.js';
+import { findChrome } from '../src/chrome-path.js';
 
 function usage() {
   console.log('Usage: node bin/astrahack.js <journey.json> [--output DIR] [--chrome PATH] [--ffmpeg PATH] [--headed] [--include-design]');
@@ -25,7 +26,7 @@ function parse(args) {
 try {
   const { file, options } = parse(process.argv.slice(2));
   const config = JSON.parse(await readFile(file, 'utf8'));
-  options.chrome ||= process.env.ASTRAHACK_CHROME;
+  options.chrome ||= findChrome() || undefined; // ASTRAHACK_CHROME first, then the usual install paths
   options.ffmpeg ||= process.env.ASTRAHACK_FFMPEG;
   const { out, report } = await run(config, options);
   console.log(`${report.status}: ${out}/report.json`);

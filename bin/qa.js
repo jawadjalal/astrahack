@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { crawlSite } from '../src/crawl.js';
 import { runQaAgent } from '../src/qa-agent.js';
 import { runFleet } from '../src/fleet.js';
+import { findChrome } from '../src/chrome-path.js';
 
 try { process.loadEnvFile('.env'); } catch (error) { if (error.code !== 'ENOENT') throw error; }
 
@@ -27,7 +28,7 @@ try {
       options[numericFlags[flag]] = Number(args.shift());
     } else throw new Error(`Unknown option: ${flag}`);
   }
-  options.chrome ||= process.env.ASTRAHACK_CHROME;
+  options.chrome ||= findChrome() || undefined; // ASTRAHACK_CHROME first, then the usual install paths
   options.output ||= `runs/${mode}-${Date.now()}`;
   if (mode === 'fleet') options.onProgress = event => {
     if (event.phase === 'crawl') console.log('Crawling site…');
