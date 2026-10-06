@@ -5,7 +5,7 @@ import { mkdir, writeFile, appendFile } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 import { FindingStore, Coverage, boxAroundPoint } from './findings.mjs';
 import { normalizeAction, substituteSecrets, describeAction, describeBatch, pointOf, MAX_ACTIONS_PER_BATCH } from './actions.mjs';
-import { explorePrompt, EXPLORE_FUNCTION_TOOLS, VERIFY_PROMPT, VERIFY_FUNCTION_TOOLS, verifyTask } from './prompt.mjs';
+import { explorePrompt, exploreFunctionTools, VERIFY_PROMPT, VERIFY_FUNCTION_TOOLS, verifyTask } from './prompt.mjs';
 import { StopError } from './stop.mjs';
 import { LAYOUT, PITCH } from './canvas.mjs';
 import { writeReports } from './report.mjs';
@@ -25,13 +25,13 @@ export function identityHint(env = process.env) {
 export async function runTeardown({
   target, brief = '', backend, canvas, stop, inbox, recorder, outDir, sessionFactory,
   maxSteps = 40, maxMinutes = 20, verify = { enabled: true, steps: 8, maxFindings: 6 },
-  ackSafetyChecks = false, env = process.env, log = () => {}, model = 'unknown', backendName = backend.name
+  ackSafetyChecks = false, includeDesign = false, env = process.env, log = () => {}, model = 'unknown', backendName = backend.name
 }) {
   await mkdir(join(outDir, 'screenshots'), { recursive: true });
   const eventsFile = join(outDir, 'events.jsonl');
   const emit = (type, data = {}) => appendFile(eventsFile, JSON.stringify({ t: new Date().toISOString(), type, ...data }) + '\n').catch(() => {});
 
-  const findings = new FindingStore();
+  const findings = new FindingStore({ includeDesign });
   const coverage = new Coverage();
   const report = {
     schemaVersion: 1, kind: 'astrahack.teardown', target, brief, backend: backendName, model,
@@ -257,8 +257,8 @@ export async function runTeardown({
     await registerStep(first, { phase: 'explore', row: 0, key: canvas.stepId(0), n: 0, thought: '', actions: [] });
 
     const sessionExplore = makeSession('explore', {
-      instructions: explorePrompt({ target, brief, maxSteps, identityHint: identityHint(env), backend: backendName }),
-      functionTools: EXPLORE_FUNCTION_TOOLS
+      instructions: explorePrompt({ target, brief, maxSteps, identityHint: identityHint(env), backend: backendName, includeDesign }),
+      functionTools: exploreFunctionTools({ includeDesign })
     });
     emit('start', { target, backend: backendName, model, maxSteps });
     const explored = await drive({
@@ -341,6 +341,8 @@ export async function runTeardown({
   const videoPath = await recorder?.stop().catch(() => null);
   report.video = videoPath ? { path: relative(outDir, videoPath) } : null;
   report.findings = findings.sorted();
+  report.rejectedFindings = findings.rejected;
+  report.includeDesign = includeDesign;
   report.counts = findings.counts();
   report.coverage = coverage.toJSON();
   if (!report.coverage.unreachable.length) report.limitations.push('No screens were reported as unreachable; absence of an entry is not proof of full coverage.');

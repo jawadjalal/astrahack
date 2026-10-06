@@ -1,5 +1,7 @@
 // System prompts and the function tools the model can call next to the `computer` tool.
 
+import { CATEGORIES, findingRulesPrompt } from '../../src/findings-filter.js';
+
 export const TEARDOWN_METHOD = `You are a product teardown agent. You operate a real product through its UI exactly like a first-time user, screenshot by screenshot, and you produce a rigorous, evidence-backed teardown: observe, reproduce, explain, rank. A human is watching your work appear live on a canvas, one screenshot per step, so keep each step purposeful and narrate briefly.
 
 METHOD (follow in this order, adapt to the product):
@@ -7,8 +9,8 @@ METHOD (follow in this order, adapt to the product):
 2. MAIN TASK. Try the product's primary task or signup end to end using the test identity (see below). Prefer the shortest path a real user would take.
 3. TIME TO VALUE. Count the steps and screens between landing and the first moment of real value. Say so when it is long (more than 5 screens or any dead end).
 4. TRACK STATE. Whenever a number, balance, count, price, badge, status or list is on screen, call track_state before and after you act on it (for example the balance before and after a transfer, the cart count before and after adding an item). Compare them yourself: a state that does not change as expected is a finding.
-5. BREAK THINGS. Submit empty forms, bad input (wrong email format, huge text, negative numbers), double-click submit, use the browser back and refresh with key presses (alt+left or cmd+[ for back, f5 or cmd+r for reload) mid-flow, and resize nothing. Look for missing validation, lost state, duplicate actions, dead links, error messages that blame the user, layout breakage.
-6. FRICTION. For every friction point or bug, call record_finding immediately while the evidence is on screen. Always give EXPECTED (what a reasonable user expects) and ACTUAL (what the screen shows) and the minimal repro_steps (shortest path from the start URL, 2 to 8 short imperative steps). Point at the problem with box or point in screenshot pixels. Severity: critical = blocks the main task or loses/corrupts data or money; high = main task works only with a workaround or a serious trust issue; medium = clear friction or inconsistency; low = polish; info = observation worth noting.
+5. BREAK THINGS. Submit empty forms, bad input (wrong email format, huge text, negative numbers), double-click submit, use the browser back and refresh with key presses (alt+left or cmd+[ for back, f5 or cmd+r for reload) mid-flow, and resize nothing. Look for missing validation, lost state, duplicate actions, dead links, layout breakage that hides or blocks a control.
+6. FINDINGS. For every FUNCTIONAL bug (see WHAT COUNTS AS A FINDING below), call record_finding immediately while the evidence is on screen. Always give EXPECTED (what a reasonable user expects) and ACTUAL (what the screen shows) and the minimal repro_steps (shortest path from the start URL, 2 to 8 short imperative steps). Point at the problem with box or point in screenshot pixels. Severity: critical = blocks the main task or loses/corrupts data or money; high = main task works only with a workaround or a serious trust issue; medium = clear friction or inconsistency; low = minor functional glitch with an easy workaround; info = functional oddity worth noting that you could not confirm.
 7. COVERAGE. Call note_coverage for each screen or flow you visited, and for each you could not reach (login wall, paywall, error, blocked by safety rules) with the reason. Never imply you tested something you did not.
 8. FINISH. When you have covered the main task and tried to break it, or the budget is nearly gone, call finish with a summary. Do not stop early after one screen.
 
@@ -26,8 +28,10 @@ SAFETY RULES (hard):
 - Stay inside the product. If a link leaves it, do not follow it.
 - If a cookie or consent banner blocks the view, choose the most privacy preserving option (reject or close).`;
 
-export function explorePrompt({ target, brief, maxSteps, identityHint, backend }) {
+export function explorePrompt({ target, brief, maxSteps, identityHint, backend, includeDesign = false }) {
   return `${TEARDOWN_METHOD}
+
+${findingRulesPrompt({ includeDesign })}
 
 TARGET: ${target}
 OPERATING SURFACE: ${backend === 'macos' ? 'the whole macOS desktop (every screenshot is the full screen; the product may be a native or Electron app; do not touch anything unrelated to the product)' : 'a browser page'}
@@ -75,11 +79,12 @@ export const EXPLORE_FUNCTION_TOOLS = [
   },
   {
     type: 'function', name: 'record_finding',
-    description: 'Record one friction point or bug with the evidence currently on screen. Report each distinct issue once.',
+    description: 'Record one FUNCTIONAL bug (observable broken behavior, never a design or taste opinion) with the evidence currently on screen. Report each distinct issue once.',
     parameters: {
       type: 'object', additionalProperties: false,
       properties: {
         title: str('Short specific title, under 100 chars.'),
+        category: { type: 'string', enum: ['functional'], description: 'Always "functional": observable broken behavior. Design observations are not accepted.' },
         severity: { type: 'string', enum: ['critical', 'high', 'medium', 'low', 'info'] },
         expected: str('What a reasonable user expects to happen.'),
         actual: str('What actually happens, as seen on screen.'),
@@ -91,7 +96,7 @@ export const EXPLORE_FUNCTION_TOOLS = [
           required: ['x', 'y', 'w', 'h']
         }
       },
-      required: ['title', 'severity', 'expected', 'actual', 'repro_steps']
+      required: ['title', 'category', 'severity', 'expected', 'actual', 'repro_steps']
     }
   },
   {
@@ -133,6 +138,15 @@ export const EXPLORE_FUNCTION_TOOLS = [
     }
   }
 ];
+
+// With --include-design the model may also label a finding usability or visual (kept at severity info).
+export function exploreFunctionTools({ includeDesign = false } = {}) {
+  if (!includeDesign) return EXPLORE_FUNCTION_TOOLS;
+  return EXPLORE_FUNCTION_TOOLS.map(tool => tool.name !== 'record_finding' ? tool : {
+    ...tool, parameters: { ...tool.parameters, properties: { ...tool.parameters.properties,
+      category: { type: 'string', enum: [...CATEGORIES], description: '"functional" for observable broken behavior; "usability" or "visual" only for design observations (always severity info).' } } }
+  });
+}
 
 export const VERIFY_FUNCTION_TOOLS = [
   {
