@@ -78,7 +78,7 @@ const ROW_GAP = 70;
 
 // geo label text: tldraw size "s", font "sans" (set through an `update` op right after the add)
 const CHAR_W = 8.9;
-const LINE_H = 24.3;
+const LINE_H = 24.8;
 const LABEL_PAD = 16;
 
 /** ids created by the kit all carry one of these prefixes, so a re-push can find and delete them */
@@ -99,7 +99,7 @@ const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
 export function cardHeight(text: string, w: number): number {
   const cpl = Math.max(8, Math.floor((w - LABEL_PAD * 2) / CHAR_W));
   const lines = text.split("\n").reduce((n, p) => n + Math.max(1, Math.ceil(p.length / cpl)), 0);
-  return Math.ceil(LABEL_PAD * 2 + lines * LINE_H + 8);
+  return Math.ceil(LABEL_PAD * 2 + lines * LINE_H + 26);
 }
 
 /** wrapped free text (kind "text" with a width) is not boxed: height only matters for spacing */
