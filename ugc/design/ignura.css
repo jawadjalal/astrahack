@@ -1,0 +1,109 @@
+/* Ignura design system — extracted from https://ignura.com (6 Oct 2026).
+   Self-hosted fonts (CORS: access-control-allow-origin *), loaded by absolute URL. */
+@font-face{font-family:"Fraunces";font-style:normal;font-weight:500 800;font-display:swap;src:url(https://ignura.com/fonts/fraunces-soft-640-v1.woff2) format("woff2")}
+@font-face{font-family:"Fraunces";font-style:italic;font-weight:500 800;font-display:swap;src:url(https://ignura.com/fonts/fraunces-soft-italic-600-v1.woff2) format("woff2")}
+@font-face{font-family:"Geist";font-style:normal;font-weight:400;font-display:swap;src:url(https://ignura.com/fonts/geist-latin-400-normal.woff2) format("woff2")}
+@font-face{font-family:"Geist";font-style:normal;font-weight:500;font-display:swap;src:url(https://ignura.com/fonts/geist-latin-500-normal.woff2) format("woff2")}
+@font-face{font-family:"Geist";font-style:normal;font-weight:600 700;font-display:swap;src:url(https://ignura.com/fonts/geist-latin-600-normal.woff2) format("woff2")}
+@font-face{font-family:"Geist Mono";font-style:normal;font-weight:400 500;font-display:swap;src:url(https://ignura.com/fonts/geist-mono-latin-400-normal.woff2) format("woff2")}
+@font-face{font-family:"Pixelify Sans";font-style:normal;font-weight:400;font-display:swap;src:url(https://ignura.com/fonts/pixelify-sans-latin-400-normal-v2.woff2) format("woff2")}
+@font-face{font-family:"Pixelify Sans";font-style:normal;font-weight:500;font-display:swap;src:url(https://ignura.com/fonts/pixelify-sans-latin-500-normal-v2.woff2) format("woff2")}
+@font-face{font-family:"Pixelify Sans";font-style:normal;font-weight:600;font-display:swap;src:url(https://ignura.com/fonts/pixelify-sans-latin-600-normal-v2.woff2) format("woff2")}
+@font-face{font-family:"Pixelify Sans";font-style:normal;font-weight:700;font-display:swap;src:url(https://ignura.com/fonts/pixelify-sans-latin-700-normal-v2.woff2) format("woff2")}
+@font-face{font-family:"Silkscreen";font-style:normal;font-weight:400;font-display:swap;src:url(https://ignura.com/fonts/silkscreen-latin-400-normal.woff2) format("woff2")}
+@font-face{font-family:"Caveat";font-style:normal;font-weight:600;font-display:swap;src:url(https://ignura.com/fonts/caveat-latin-600-normal-v2.woff2) format("woff2")}
+
+:root{
+  /* required tokens */
+  --bg:#fbf6ee;            /* warm paper */
+  --surface:#fffdf9;       /* card */
+  --surface-2:#f4ecdf;     /* paper-2 / wells */
+  --text:#161616;          /* ink */
+  --muted:#665e55;         /* ink-3 (ink-2 #4a453f for body copy) */
+  --border:#161616;        /* chunky ink outlines on interactive things; soft lines use --ig-line */
+  --accent:#ff6a1f;        /* orange */
+  --accent-ink:#161616;    /* ink text on orange (site puts orange words with ink stroke) */
+  --accent-2:#ffd45c;      /* butter yellow */
+  --radius:12px;
+  --radius-lg:40px;
+  --shadow:0 5px 0 #161616; /* the "shelf": hard offset ink drop, no blur */
+  --font-display:"Fraunces","Iowan Old Style",Georgia,serif;
+  --font-body:"Geist",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --font-mono:"Geist Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+
+  /* extras */
+  --ig-font-pixel:"Pixelify Sans",ui-monospace,monospace;   /* buttons, nav, chips, sublines */
+  --ig-font-word:"Silkscreen",ui-monospace,monospace;       /* tiny all-caps pixel labels */
+  --ig-font-hand:"Caveat","Comic Sans MS",cursive;          /* handwritten annotations */
+  --ig-fvs-soft:"SOFT" 100,"WONK" 1,"opsz" 144;
+  --ig-paper-3:#efe5d5; --ig-ink-2:#4a453f; --ig-line:#e6dccd; --ig-line-2:#d9ccb8;
+  --ig-slate:#2f3a45; --ig-slate-hover:#3c4955; --ig-slate-2:#5f6a74;
+  --ig-chip:#f6f1ea; --ig-well:#f1ece4; --ig-cream:#fff6ea;
+  --ig-orange-light:#ff8a3d; --ig-orange-deep:#b33805; --ig-orange-ink:#b23c08; --ig-orange-soft:#ffe3cf;
+  --ig-butter-soft:#ffe9a6; --ig-yellow:#ffc83d; --ig-sky:#8fc3f2; --ig-sky-soft:#d6e9fa;
+  --ig-mint:#8fd8ae; --ig-tomato:#f2553e; --ig-blush:#ff9e86;
+  --ig-r-xs:8px; --ig-r-s:12px; --ig-r-m:20px; --ig-r-l:32px; --ig-r-xl:40px; --ig-r-2xl:48px; --ig-r-pill:999px;
+  --ig-r-btn:11px; --ig-r-cta:15px;
+  --ig-stroke:3px; --ig-stroke-ui:2.5px;
+  --ig-shelf-s:0 3px 0 #161616; --ig-shelf-l:0 8px 0 #161616;
+  --ig-sh-soft:0 34px 60px -38px #6e2d088c;
+  --ig-sh-nav:#8c6e502e 0 1px 2px 0,#8c6e5029 0 12px 24px -12px;
+  --ig-sh-raised:0 1px 2px #3c2d1e29;
+  --ig-sh-inset:inset 0 1px 2px #3c2d1e1a,inset 0 0 0 1px #3c2d1e0a;
+  --ig-s-1:4px; --ig-s-2:8px; --ig-s-3:12px; --ig-s-4:16px; --ig-s-5:20px; --ig-s-6:24px; --ig-s-7:32px;
+  --ig-s-8:40px; --ig-s-9:56px; --ig-s-10:72px; --ig-s-11:96px; --ig-s-12:128px;
+  --ig-fs-hero:clamp(2.6rem,1.2rem + 5.6vw,6rem);
+  --ig-fs-h2:clamp(2.25rem,1.35rem + 3.4vw,4.25rem);
+  --ig-fs-h3:clamp(1.75rem,1.3rem + 1.6vw,2.5rem);
+  --ig-fs-lede:clamp(1.0625rem,.98rem + .38vw,1.25rem);
+  --ig-fs-body:clamp(1rem,.96rem + .2vw,1.125rem);
+  --ig-ease:cubic-bezier(.4,0,.2,1); --ig-ease-pop:cubic-bezier(.34,1.56,.64,1);
+  --ig-grain:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='g' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch' seed='7'/%3E%3CfeColorMatrix values='0 0 0 0 .42 0 0 0 0 .29 0 0 0 0 .17 .34 0 0 0 -.11'/%3E%3C/filter%3E%3Cfilter id='f' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.05 .42' numOctaves='2' stitchTiles='stitch' seed='3'/%3E%3CfeColorMatrix values='0 0 0 0 .42 0 0 0 0 .29 0 0 0 0 .17 .5 0 0 0 -.29'/%3E%3C/filter%3E%3Crect width='220' height='220' filter='url(%23g)'/%3E%3Crect width='220' height='220' filter='url(%23f)'/%3E%3C/svg%3E");
+  color-scheme:light; /* site is light-only, no dark mode */
+}
+
+/* Paper + grain background (the whole site sits on this) */
+.ig-bg{background-color:var(--bg);background-image:var(--ig-grain);background-size:220px 220px;color:var(--ig-ink-2);font:400 var(--ig-fs-body)/1.55 var(--font-body);-webkit-font-smoothing:antialiased}
+/* Hero sky wash used behind the top of the page */
+.ig-bg-sky{background:linear-gradient(180deg,var(--bg) 0%,var(--ig-orange-soft) 60%,var(--ig-blush) 100%)}
+
+/* Headings: soft, wonky Fraunces at weight ~640, tight tracking */
+.ig-h1,.ig-h2,.ig-h3{font-family:var(--font-display);font-variation-settings:var(--ig-fvs-soft);font-weight:640;color:var(--text);margin:0;text-wrap:balance}
+.ig-h1{font-size:var(--ig-fs-hero);letter-spacing:-.03em;line-height:1;word-spacing:.08em}
+.ig-h2{font-size:var(--ig-fs-h2);letter-spacing:-.028em;line-height:1.02}
+.ig-h3{font-size:var(--ig-fs-h3);letter-spacing:-.02em;line-height:1.1}
+.ig-h1 em,.ig-h2 em,.ig-h3 em{font-style:italic;font-weight:600;letter-spacing:-.01em}
+/* Signature: orange italic word with ink outline + hard drop ("Ignite") */
+.ig-ignite{font-style:italic;color:var(--accent);-webkit-text-stroke:.06em var(--text);paint-order:stroke fill;text-shadow:0 .07em 0 var(--text);letter-spacing:-.01em}
+
+/* Primary button: slate fill, ink outline, hard shelf shadow, pixel font, orange arrow tile */
+.ig-btn{position:relative;display:inline-flex;align-items:center;gap:12px;height:54px;padding:0 8px 0 20px;border:var(--ig-stroke-ui) solid var(--text);border-radius:var(--ig-r-cta);background:var(--ig-slate);color:#fbfaf8;box-shadow:0 4px 0 var(--text);font:500 18px/1 var(--ig-font-pixel);white-space:nowrap;text-decoration:none;cursor:pointer;transition:transform .18s var(--ig-ease-pop),box-shadow .18s var(--ig-ease),background-color .2s var(--ig-ease)}
+.ig-btn:hover{background:var(--ig-slate-hover);box-shadow:0 6px 0 var(--text);transform:translateY(-2px)}
+.ig-btn:active{box-shadow:0 1px 0 var(--text);transform:translateY(3px)}
+.ig-btn .ig-btn-arrow{display:grid;place-items:center;width:38px;height:38px;border-radius:9px;background:var(--accent);color:#fff;border:2px solid var(--text)}
+.ig-btn-sm{height:40px;font-size:16px;padding:0 16px 0 12px;border-width:1.5px;border-radius:var(--ig-r-btn);box-shadow:0 2px 0 var(--text)}
+.ig-btn-butter{background:var(--accent-2);color:var(--text)}
+.ig-btn-butter:hover{background:var(--ig-yellow)}
+/* Ghost/light button: card fill, same ink outline + shelf */
+.ig-btn-ghost{position:relative;display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 14px;border:2px solid var(--text);border-radius:var(--ig-r-pill);background:var(--surface);color:var(--text);box-shadow:var(--ig-shelf-s);font:500 15px/1 var(--ig-font-pixel);cursor:pointer;text-decoration:none;transition:transform .18s var(--ig-ease-pop),box-shadow .18s var(--ig-ease)}
+.ig-btn-ghost:hover{background:#fff;transform:translateY(-1px);box-shadow:0 4px 0 var(--text)}
+
+/* Card: off-white, 3px ink border, 40px radius, optional shelf */
+.ig-card{position:relative;background:var(--surface);border:var(--ig-stroke) solid var(--text);border-radius:var(--radius-lg);box-shadow:var(--shadow);padding:var(--ig-s-7)}
+.ig-card-soft{background:var(--surface);border:1.5px solid var(--ig-line);border-radius:var(--ig-r-l);box-shadow:var(--ig-sh-soft);padding:var(--ig-s-6)}
+
+/* Pills / tags */
+.ig-pill{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 11px;border-radius:var(--ig-r-pill);background:var(--ig-chip);color:var(--ig-slate-2);font:500 14px/1 var(--ig-font-pixel);white-space:nowrap}
+.ig-pill-ink{background:var(--surface);color:var(--text);border:2px solid var(--text)}
+.ig-pill-dark{background:var(--text);color:var(--ig-cream)}
+.ig-pill-accent{background:var(--ig-orange-soft);color:var(--ig-orange-ink)}
+.ig-tag{display:inline-block;padding:6px 10px;border-radius:var(--ig-r-pill);background:var(--ig-chip);color:var(--muted);font:400 12.5px/1 var(--font-mono);letter-spacing:-.02em}
+
+/* Eyebrow: site uses tiny pixel caps (Silkscreen) for labels */
+.ig-eyebrow{font:400 12px/1 var(--ig-font-word);text-transform:uppercase;letter-spacing:.06em;color:var(--ig-orange-ink)}
+/* Handwritten annotation ("it's free, promise") */
+.ig-hand{font:600 1.3em/.9 var(--ig-font-hand);color:var(--ig-orange-deep);display:inline-block;rotate:-2deg}
+/* Pixel subline under headings */
+.ig-pixel{font-family:var(--ig-font-pixel);font-weight:500;color:var(--text)}
+
+::selection{background:var(--accent-2);color:var(--text)}

@@ -1,0 +1,251 @@
+{
+  "name": "Ignura first-visit walkthrough",
+  "target": {
+    "type": "website",
+    "url": "https://ignura.com/"
+  },
+  "journeys": [
+    {
+      "name": "Homepage hero",
+      "video": false,
+      "steps": [
+        {
+          "action": "goto",
+          "url": "/",
+          "settleMs": 2000
+        },
+        {
+          "action": "assertText",
+          "text": "Ignite",
+          "expected": "The hero names Ignite, the whole-launch offer",
+          "settleMs": 800
+        },
+        {
+          "action": "goto",
+          "url": "/#story",
+          "settleMs": 1500
+        }
+      ]
+    },
+    {
+      "name": "Browse the work by type",
+      "video": false,
+      "steps": [
+        {
+          "action": "goto",
+          "url": "/#work",
+          "settleMs": 1500
+        },
+        {
+          "action": "assertText",
+          "text": "Here’s what we’ve made",
+          "expected": "The work section introduces past projects"
+        },
+        {
+          "action": "click",
+          "selector": "#w-tab-ugc",
+          "settleMs": 1200,
+          "expected": "The UGC tab filters the work grid"
+        },
+        {
+          "action": "click",
+          "selector": "#w-tab-site",
+          "settleMs": 1200,
+          "expected": "The Sites tab filters the work grid"
+        },
+        {
+          "action": "click",
+          "selector": "#w-tab-film",
+          "settleMs": 1200,
+          "expected": "The Film tab filters the work grid"
+        }
+      ]
+    },
+    {
+      "name": "Explore the service menu",
+      "video": false,
+      "steps": [
+        {
+          "action": "goto",
+          "url": "/#menu",
+          "settleMs": 1500
+        },
+        {
+          "action": "assertText",
+          "text": "Everything a launch needs",
+          "expected": "The menu lists every service"
+        },
+        {
+          "action": "click",
+          "selector": "#m-t-teardown",
+          "settleMs": 1000,
+          "expected": "Tapping a service tile opens its details"
+        },
+        {
+          "action": "assertText",
+          "text": "We use your app for a week",
+          "expected": "The free teardown is explained"
+        },
+        {
+          "action": "click",
+          "selector": "#m-t-film",
+          "settleMs": 1000,
+          "expected": "The launch film tile opens its details"
+        },
+        {
+          "action": "assertText",
+          "text": "A 30–60 second film",
+          "expected": "The launch film service is explained"
+        }
+      ]
+    },
+    {
+      "name": "How a launch works and pricing",
+      "video": false,
+      "steps": [
+        {
+          "action": "goto",
+          "url": "/#how",
+          "settleMs": 1500
+        },
+        {
+          "action": "assertText",
+          "text": "Four weeks, start to lift-off",
+          "expected": "The four-week launch timeline is shown"
+        },
+        {
+          "action": "goto",
+          "url": "/#pricing",
+          "settleMs": 1500
+        },
+        {
+          "action": "assertText",
+          "text": "Pick how you want us",
+          "expected": "Pricing explains Ignite vs Burn"
+        },
+        {
+          "action": "click",
+          "selector": "#a-la-carte > summary",
+          "settleMs": 1200,
+          "expected": "The a-la-carte price list expands"
+        }
+      ]
+    },
+    {
+      "name": "Read the FAQ",
+      "video": false,
+      "steps": [
+        {
+          "action": "goto",
+          "url": "/#faq",
+          "settleMs": 1500
+        },
+        {
+          "action": "assertText",
+          "text": "Things founders ask us",
+          "expected": "The FAQ section renders"
+        },
+        {
+          "action": "click",
+          "selector": "#f-all > summary",
+          "settleMs": 1200,
+          "expected": "The usual answers expand"
+        },
+        {
+          "action": "assertText",
+          "text": "What does a launch cost?",
+          "expected": "The FAQ answers the pricing question"
+        }
+      ]
+    },
+    {
+      "name": "Work page and UGC case study",
+      "video": false,
+      "steps": [
+        {
+          "action": "goto",
+          "url": "/work",
+          "settleMs": 1500
+        },
+        {
+          "action": "assertText",
+          "text": "Sites, apps and a dashboard",
+          "expected": "The work page shows designed sites and apps"
+        },
+        {
+          "action": "click",
+          "selector": "a[href=\"/work/ugc\"]",
+          "settleMs": 1500,
+          "expected": "The UGC case study link opens"
+        },
+        {
+          "action": "assertUrl",
+          "contains": "/work/ugc",
+          "expected": "The browser lands on the UGC case study"
+        },
+        {
+          "action": "assertText",
+          "text": "The numbers we can show",
+          "expected": "The UGC case study shows view counts"
+        },
+        {
+          "action": "goto",
+          "url": "/work/okara",
+          "settleMs": 1500
+        },
+        {
+          "action": "assertText",
+          "text": "Okara",
+          "expected": "The Okara case study page loads"
+        }
+      ]
+    },
+    {
+      "name": "Shelf Test tool and blog via header nav",
+      "video": false,
+      "steps": [
+        {
+          "action": "goto",
+          "url": "/shelf",
+          "settleMs": 1500
+        },
+        {
+          "action": "assertText",
+          "text": "Would a stranger tap it?",
+          "expected": "The free Shelf Test tool loads"
+        },
+        {
+          "action": "click",
+          "selector": "nav[aria-label=\"Main\"] a[href=\"/blog\"]",
+          "settleMs": 1500,
+          "expected": "The main header navigation links to the blog",
+          "failureSummary": "Header Blog link missing or not clickable",
+          "severity": "high"
+        },
+        {
+          "action": "assertUrl",
+          "contains": "/blog",
+          "expected": "The header Blog link resolves to /blog",
+          "failureSummary": "Header Blog link does not navigate to /blog",
+          "severity": "high"
+        },
+        {
+          "action": "assertText",
+          "text": "Kindling",
+          "expected": "The Kindling blog index renders"
+        },
+        {
+          "action": "click",
+          "selector": "a[href=\"/blog/four-week-launch-plan\"]",
+          "settleMs": 1500,
+          "expected": "A blog post opens from the index"
+        },
+        {
+          "action": "assertText",
+          "text": "four-week launch plan",
+          "expected": "The four-week launch plan post renders"
+        }
+      ]
+    }
+  ]
+}
