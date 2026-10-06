@@ -400,8 +400,8 @@ export function runToOps(bundle: any, opts: RunToOpsOptions = {}): Op[] {
     if ("target" in out && out.target) out.target = scoped(out.target);
     if (out.type === "add_arrow") { out.from = scoped(out.from); out.to = scoped(out.to); }
     if (out.type === "focus" && out.ids) out.ids = out.ids.map(scoped);
-    if ("x" in out) out.x += opts.origin?.x ?? 0;
-    if ("y" in out) out.y += opts.origin?.y ?? 0;
+    if ("x" in out && typeof out.x === "number") out.x += opts.origin?.x ?? 0;
+    if ("y" in out && typeof out.y === "number") out.y += opts.origin?.y ?? 0;
     return out;
   });
 }
