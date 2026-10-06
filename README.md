@@ -95,6 +95,16 @@ The report records observed facts only. Downstream agents should treat marketing
 
 Exit status is `0` for a passing run, `1` for QA findings, and `2` for setup or runtime errors. Run `npm test` for the local fixture integration test.
 
+### Capture major feature screenshots
+
+After a run, use the dedicated feature capture agent to review the observed screens with GPT-6 Astra and create a curated screenshot set:
+
+```sh
+OPENAI_API_KEY=... node bin/feature-capture.js runs/example/report.json
+```
+
+It writes `feature-captures/manifest.json` and selected PNGs beside the QA report. The manifest links each screenshot to its source observation and lists evidence gaps. The QA report remains the input contract; see [the capture contract](docs/FEATURE_CAPTURE_CONTRACT.md) for the supported crawler shape and limitations. The agent requires an OpenAI API key and sends short page observations to the Responses API.
+
 ## Planning notes
 
 The documents in [`docs/`](docs/) capture earlier planning for the creative-generation part of the product. They predate the broader MVP described here and are retained as background, not as the current scope for the computer-use work.
