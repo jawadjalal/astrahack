@@ -110,6 +110,24 @@ test('large fleet keeps every recorded issue while bounding model evidence', asy
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
+test('HTML heading checks on linked media assets are excluded from QA findings', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'astrahack-media-analysis-'));
+  try {
+    await writeFile(join(dir, 'crawl.json'), JSON.stringify({ target: 'https://example.test/', pages: [], findings: [
+      { type: 'missing_title', severity: 'low', url: 'https://example.test/demo.mp4', actual: 'Document title is empty' },
+      { type: 'missing_h1', severity: 'low', url: 'https://example.test/demo.mp4', actual: 'No visible H1 heading' },
+      { type: 'missing_h1', severity: 'low', url: 'https://example.test/about', actual: 'No visible H1 heading' }
+    ] }));
+    let evidence;
+    const request = async payload => { evidence = JSON.parse(payload.input[1].content[0].text).evidence; return { output: [{ type: 'message', content: [{ type: 'output_text', text: JSON.stringify({ productSummary: '', observedFeatures: [], candidateFindings: [], limitations: [] }) }] }] }; };
+    const { report } = await analyzeQa(dir, { request, includeImages: false });
+    assert.equal(report.findings.length, 1);
+    assert.deepEqual(report.findings[0].evidenceRefs, ['CF003']);
+    assert.deepEqual(evidence.map(item => item.id), ['CF003']);
+    assert.match(report.limitations.join(' '), /Ignored 2 HTML title\/heading check/);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
 test('catalog discards traversal screenshot references', () => {
   const catalog = evidenceCatalog({ pages: [{ url: 'https://example.test', screenshot: '../secret.png' }] });
   assert.equal(catalog[0].screenshot, null);
