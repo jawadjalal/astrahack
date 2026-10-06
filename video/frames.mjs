@@ -133,6 +133,13 @@ ${progress(total, idx)}
 ${footer(`STORYBOARD ANIMATIC · ${timing} · PROPOSED, NOT FINAL FOOTAGE`)}`, { transparent: true });
 }
 
+// Below the hook: estimate its line count at the hook's font size (Fraunces averages ~0.45em per char).
+export function peekTop(hook) {
+  const size = Math.min(132, captionSize(hook) + 22);
+  const lines = Math.max(1, Math.ceil(String(hook || '').length * 0.45 * size / 940));
+  return 450 + Math.round(lines * size * 1.05) + 70;
+}
+
 export function titleHtml({ brand, scriptId, hook, meta, total, preview, label = 'THE HOOK · FIRST 2 SECONDS' }) {
   const chips = (Array.isArray(meta) ? meta : [meta]).filter(Boolean);
   return base(`${paperSvg({ glow: [{ x: 900, y: 520, r: 420 }, { x: 140, y: 1500, r: 360 }] })}
@@ -140,7 +147,7 @@ ${header(brand, `${scriptId} · HOOK`)}
 ${progress(total, 0)}
 <div class="abs" style="left:64px;top:330px"><span class="tag" style="background:#ffd45c">${esc(label)}</span></div>
 <div class="abs" style="left:60px;right:60px;top:450px;font-size:${Math.min(132, captionSize(hook) + 22)}px">${captionHtml(hook, 'big')}</div>
-${preview ? `<div class="abs peek" style="left:110px;right:110px;top:${450 + Math.round(Math.min(132, captionSize(hook) + 22) * 3.4)}px"><img src="${pathToFileURL(preview).href}"></div>` : ''}
+${preview ? `<div class="abs peek" style="left:110px;right:110px;top:${peekTop(hook)}px"><img src="${pathToFileURL(preview).href}"></div>` : ''}
 <div class="abs meta" style="left:64px;right:64px;bottom:190px">${chips.map((c) => `<span>${esc(c)}</span>`).join('')}</div>
 ${footer('STORYBOARD ANIMATIC · PROPOSED, NOT FINAL FOOTAGE')}`);
 }
