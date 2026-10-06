@@ -1,0 +1,199 @@
+{
+  "title": "Ignura on X: the four-week launch",
+  "objective": "Get founders who are about to launch to ask for the free teardown.",
+  "audience": "Placeholder to be edited before use",
+  "positioning": "Placeholder to be edited before use",
+  "assumptions": [
+    "Placeholder to be edited before use"
+  ],
+  "strategy": "Placeholder to be edited before use",
+  "posts": [
+    {
+      "id": "x-1",
+      "angle": "Problem-led",
+      "audience": "Placeholder to be edited before use",
+      "title": "Problem-led",
+      "copy": "You built the thing. Now what? Most launches stall because nobody planned week one. Ignura runs a four-week launch, start to lift-off. Free teardown first: [LINK]",
+      "cta": "Get the free teardown",
+      "rationale": "Placeholder to be edited before use"
+    },
+    {
+      "id": "x-2",
+      "angle": "Educational",
+      "audience": "Placeholder to be edited before use",
+      "title": "Educational",
+      "copy": "The shape of an Ignura launch: 1 Teardown + plan. 2 Polish, shots, page. 3 Film + UGC. 4 Launch day. Four weeks, one board. [LINK]",
+      "cta": "Get the free teardown",
+      "rationale": "Placeholder to be edited before use"
+    },
+    {
+      "id": "x-3",
+      "angle": "Product",
+      "audience": "Placeholder to be edited before use",
+      "title": "Product",
+      "copy": "The free teardown: we walk your app like a first-time user and tell you what a stranger would tap and where they would bounce. [LINK]",
+      "cta": "Get the free teardown",
+      "rationale": "Placeholder to be edited before use"
+    },
+    {
+      "id": "x-4",
+      "angle": "Discussion",
+      "audience": "Placeholder to be edited before use",
+      "title": "Discussion",
+      "copy": "Founders: what is the one thing you wish you had fixed before launch day? Reply and we will tell you how we would look at it.",
+      "cta": "Get the free teardown",
+      "rationale": "Placeholder to be edited before use"
+    },
+    {
+      "id": "x-5",
+      "angle": "Educational",
+      "audience": "Placeholder to be edited before use",
+      "title": "Educational",
+      "copy": "Content that does not look like ads. That is the brief we give UGC creators for app launches. [LINK]",
+      "cta": "Get the free teardown",
+      "rationale": "Placeholder to be edited before use"
+    },
+    {
+      "id": "x-6",
+      "angle": "Product",
+      "audience": "Placeholder to be edited before use",
+      "title": "Product",
+      "copy": "A launch film does not have to be long. Ours runs 52 seconds. See how we structure one: [LINK]",
+      "cta": "Get the free teardown",
+      "rationale": "Placeholder to be edited before use"
+    },
+    {
+      "id": "x-7",
+      "angle": "Problem-led",
+      "audience": "Placeholder to be edited before use",
+      "title": "Problem-led",
+      "copy": "Launching soon? Book a free call and bring the app. We will show you what the first week should look like. [LINK]",
+      "cta": "Get the free teardown",
+      "rationale": "Placeholder to be edited before use"
+    }
+  ],
+  "thread": [
+    "We built Ignura because launches keep dying in week one. Here is the four-week plan we run for apps. A thread.",
+    "Week 1: the teardown and the plan. We use the app like a stranger would and write down what we find. It is free.",
+    "Week 2: polish. App Store screenshots, the landing page, the shots we will need for the film.",
+    "Week 3: the launch film and the UGC shoot. UGC that opens like a post, not an ad.",
+    "Week 4: line it up, then launch. X, TikTok and Product Hunt, hour by hour.",
+    "Want the teardown for your app? It is free. [LINK]"
+  ],
+  "engagement": "Placeholder to be edited before use",
+  "calendar": [
+    {
+      "day": 1,
+      "action": "Placeholder to be edited before use",
+      "contentId": "x-1",
+      "purpose": "Placeholder to be edited before use"
+    },
+    {
+      "day": 2,
+      "action": "Placeholder to be edited before use",
+      "contentId": "x-2",
+      "purpose": "Placeholder to be edited before use"
+    },
+    {
+      "day": 3,
+      "action": "Placeholder to be edited before use",
+      "contentId": "x-3",
+      "purpose": "Placeholder to be edited before use"
+    },
+    {
+      "day": 4,
+      "action": "Placeholder to be edited before use",
+      "contentId": "x-4",
+      "purpose": "Placeholder to be edited before use"
+    },
+    {
+      "day": 5,
+      "action": "Placeholder to be edited before use",
+      "contentId": "x-5",
+      "purpose": "Placeholder to be edited before use"
+    },
+    {
+      "day": 6,
+      "action": "Placeholder to be edited before use",
+      "contentId": "x-6",
+      "purpose": "Placeholder to be edited before use"
+    },
+    {
+      "day": 7,
+      "action": "Placeholder to be edited before use",
+      "contentId": "x-7",
+      "purpose": "Placeholder to be edited before use"
+    },
+    {
+      "day": 8,
+      "action": "Placeholder to be edited before use",
+      "contentId": "x-1",
+      "purpose": "Placeholder to be edited before use"
+    },
+    {
+      "day": 9,
+      "action": "Placeholder to be edited before use",
+      "contentId": "x-2",
+      "purpose": "Placeholder to be edited before use"
+    },
+    {
+      "day": 10,
+      "action": "Placeholder to be edited before use",
+      "contentId": "x-3",
+      "purpose": "Placeholder to be edited before use"
+    },
+    {
+      "day": 11,
+      "action": "Placeholder to be edited before use",
+      "contentId": "x-4",
+      "purpose": "Placeholder to be edited before use"
+    },
+    {
+      "day": 12,
+      "action": "Placeholder to be edited before use",
+      "contentId": "x-5",
+      "purpose": "Placeholder to be edited before use"
+    },
+    {
+      "day": 13,
+      "action": "Placeholder to be edited before use",
+      "contentId": "x-6",
+      "purpose": "Placeholder to be edited before use"
+    },
+    {
+      "day": 14,
+      "action": "Placeholder to be edited before use",
+      "contentId": "x-7",
+      "purpose": "Placeholder to be edited before use"
+    }
+  ],
+  "conversion": "Placeholder to be edited before use",
+  "measurement": "Placeholder to be edited before use",
+  "experiments": [
+    {
+      "hypothesis": "Placeholder to be edited before use",
+      "variants": "Placeholder to be edited before use",
+      "metric": "Placeholder to be edited before use",
+      "decision": "Placeholder to be edited before use"
+    },
+    {
+      "hypothesis": "Placeholder to be edited before use",
+      "variants": "Placeholder to be edited before use",
+      "metric": "Placeholder to be edited before use",
+      "decision": "Placeholder to be edited before use"
+    },
+    {
+      "hypothesis": "Placeholder to be edited before use",
+      "variants": "Placeholder to be edited before use",
+      "metric": "Placeholder to be edited before use",
+      "decision": "Placeholder to be edited before use"
+    }
+  ],
+  "launchChecklist": [
+    "Placeholder to be edited before use",
+    "Placeholder to be edited before use",
+    "Placeholder to be edited before use",
+    "Placeholder to be edited before use",
+    "Placeholder to be edited before use"
+  ]
+}

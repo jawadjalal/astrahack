@@ -1,0 +1,46 @@
+{
+  "createdAt": "2026-10-06T18:38:17.367Z",
+  "status": "complete",
+  "provider": "gemini",
+  "model": "gemini-nano-banana-2.1",
+  "size": "1024x1024",
+  "count": 5,
+  "sourcePrompt": "Ignura is a launch studio for consumer apps, prosumer tools and B2B. You bring the product; we do design, launch film, UGC, go-to-market and launch day. A launch runs four weeks: teardown and plan, polish and page, film and UGC, launch day. Free teardown available. Audience: founders about to launch. CTA: Get the free teardown.",
+  "creatives": [
+    {
+      "index": 1,
+      "name": "hero",
+      "filename": "01-hero.png",
+      "prompt": "Create a finished, original square 1:1 static advertisement for Facebook or Instagram.\n\nPRODUCT AND CAMPAIGN BRIEF:\nIgnura is a launch studio for consumer apps, prosumer tools and B2B. You bring the product; we do design, launch film, UGC, go-to-market and launch day. A launch runs four weeks: teardown and plan, polish and page, film and UGC, launch day. Free teardown available. Audience: founders about to launch. CTA: Get the free teardown.\n\nART DIRECTION FOR THIS VARIATION:\nOne striking product-specific hero visual. Restrained, premium art direction, generous whitespace, and a clear typographic hierarchy.\n\nREQUIREMENTS:\nUse only product facts, brand details, offers, and claims supplied in the brief. Do not invent testimonials, statistics, discounts, guarantees, certifications, pricing, features, logos, or UI. If a visual treatment conflicts with the product, adapt the treatment while preserving the product facts. Respect any exact copy specified in the brief; otherwise write a short product-specific headline and a concise CTA only if supported by the brief. Keep text minimal and perfectly legible. Use a clean, distinctive composition with one visual idea, strong contrast, intentional whitespace, and safe margins. Render the ad itself edge to edge, without a device frame, social-media interface, watermarks, or explanatory text. Do not include these instructions as visible copy.",
+      "status": "complete"
+    },
+    {
+      "index": 2,
+      "name": "editorial",
+      "filename": "02-editorial.png",
+      "prompt": "Create a finished, original square 1:1 static advertisement for Facebook or Instagram.\n\nPRODUCT AND CAMPAIGN BRIEF:\nIgnura is a launch studio for consumer apps, prosumer tools and B2B. You bring the product; we do design, launch film, UGC, go-to-market and launch day. A launch runs four weeks: teardown and plan, polish and page, film and UGC, launch day. Free teardown available. Audience: founders about to launch. CTA: Get the free teardown.\n\nART DIRECTION FOR THIS VARIATION:\nA refined editorial composition. An unexpected crop or viewpoint on a concrete subject relevant to this product. Minimal copy with confident typography.\n\nREQUIREMENTS:\nUse only product facts, brand details, offers, and claims supplied in the brief. Do not invent testimonials, statistics, discounts, guarantees, certifications, pricing, features, logos, or UI. If a visual treatment conflicts with the product, adapt the treatment while preserving the product facts. Respect any exact copy specified in the brief; otherwise write a short product-specific headline and a concise CTA only if supported by the brief. Keep text minimal and perfectly legible. Use a clean, distinctive composition with one visual idea, strong contrast, intentional whitespace, and safe margins. Render the ad itself edge to edge, without a device frame, social-media interface, watermarks, or explanatory text. Do not include these instructions as visible copy.",
+      "status": "complete"
+    },
+    {
+      "index": 3,
+      "name": "benefit",
+      "filename": "03-benefit.png",
+      "prompt": "Create a finished, original square 1:1 static advertisement for Facebook or Instagram.\n\nPRODUCT AND CAMPAIGN BRIEF:\nIgnura is a launch studio for consumer apps, prosumer tools and B2B. You bring the product; we do design, launch film, UGC, go-to-market and launch day. A launch runs four weeks: teardown and plan, polish and page, film and UGC, launch day. Free teardown available. Audience: founders about to launch. CTA: Get the free teardown.\n\nART DIRECTION FOR THIS VARIATION:\nMake the strongest explicitly supported benefit the visual idea. Use one concrete metaphor related to the product, not generic technology imagery.\n\nREQUIREMENTS:\nUse only product facts, brand details, offers, and claims supplied in the brief. Do not invent testimonials, statistics, discounts, guarantees, certifications, pricing, features, logos, or UI. If a visual treatment conflicts with the product, adapt the treatment while preserving the product facts. Respect any exact copy specified in the brief; otherwise write a short product-specific headline and a concise CTA only if supported by the brief. Keep text minimal and perfectly legible. Use a clean, distinctive composition with one visual idea, strong contrast, intentional whitespace, and safe margins. Render the ad itself edge to edge, without a device frame, social-media interface, watermarks, or explanatory text. Do not include these instructions as visible copy.",
+      "status": "complete"
+    },
+    {
+      "index": 4,
+      "name": "context",
+      "filename": "04-context.png",
+      "prompt": "Create a finished, original square 1:1 static advertisement for Facebook or Instagram.\n\nPRODUCT AND CAMPAIGN BRIEF:\nIgnura is a launch studio for consumer apps, prosumer tools and B2B. You bring the product; we do design, launch film, UGC, go-to-market and launch day. A launch runs four weeks: teardown and plan, polish and page, film and UGC, launch day. Free teardown available. Audience: founders about to launch. CTA: Get the free teardown.\n\nART DIRECTION FOR THIS VARIATION:\nShow a believable context of use suited to the audience described in the brief. One focal subject, uncluttered background, minimal copy.\n\nREQUIREMENTS:\nUse only product facts, brand details, offers, and claims supplied in the brief. Do not invent testimonials, statistics, discounts, guarantees, certifications, pricing, features, logos, or UI. If a visual treatment conflicts with the product, adapt the treatment while preserving the product facts. Respect any exact copy specified in the brief; otherwise write a short product-specific headline and a concise CTA only if supported by the brief. Keep text minimal and perfectly legible. Use a clean, distinctive composition with one visual idea, strong contrast, intentional whitespace, and safe margins. Render the ad itself edge to edge, without a device frame, social-media interface, watermarks, or explanatory text. Do not include these instructions as visible copy.",
+      "status": "complete"
+    },
+    {
+      "index": 5,
+      "name": "typographic",
+      "filename": "05-typographic.png",
+      "prompt": "Create a finished, original square 1:1 static advertisement for Facebook or Instagram.\n\nPRODUCT AND CAMPAIGN BRIEF:\nIgnura is a launch studio for consumer apps, prosumer tools and B2B. You bring the product; we do design, launch film, UGC, go-to-market and launch day. A launch runs four weeks: teardown and plan, polish and page, film and UGC, launch day. Free teardown available. Audience: founders about to launch. CTA: Get the free teardown.\n\nART DIRECTION FOR THIS VARIATION:\nA bold typographic composition supported by one small, product-specific visual. Express the supplied message with outstanding readability and generous negative space.\n\nREQUIREMENTS:\nUse only product facts, brand details, offers, and claims supplied in the brief. Do not invent testimonials, statistics, discounts, guarantees, certifications, pricing, features, logos, or UI. If a visual treatment conflicts with the product, adapt the treatment while preserving the product facts. Respect any exact copy specified in the brief; otherwise write a short product-specific headline and a concise CTA only if supported by the brief. Keep text minimal and perfectly legible. Use a clean, distinctive composition with one visual idea, strong contrast, intentional whitespace, and safe margins. Render the ad itself edge to edge, without a device frame, social-media interface, watermarks, or explanatory text. Do not include these instructions as visible copy.",
+      "status": "complete"
+    }
+  ]
+}

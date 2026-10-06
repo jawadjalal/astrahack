@@ -3,32 +3,31 @@
 //
 //   npm run teardown -- https://example.com            live run on a URL, drawn on the canvas as it goes
 //   npm run teardown -- https://example.com --kit      ...then ads, X/Reddit campaigns and a UGC plan on the board
-//   npm run teardown -- --mock                         no API keys, no Chrome: prepared sample board + sample kit
-//   npm run teardown -- --mock --fixture ignura        same, using the recorded ignura.com run (real screenshots)
+//   npm run teardown -- --mock                         no API keys, no Chrome: the recorded ignura.com run (real screenshots) + a sample kit
+//   npm run teardown -- --mock --fixture fernly        instant fictional sample board with ranked findings (no kit)
 //   npm run teardown -- --replay runs/demo             push an existing run directory (report.json or qa-agent.json)
 //
-// Options: --canvas URL (default $CANVAS_URL, else http://localhost:3000)  --live  --no-clear  --kit  --no-kit
+// Options: --canvas URL (default $CANVAS_URL, else http://localhost:3000)  --live  --clear  --no-clear  --kit  --no-kit
 //   --agent auto|astra|runner|custom  --brief TEXT  --paths /a,/b  --config journeys.json  --headed  --max-minutes N
 //   --out DIR  --open  --no-start  --no-install  --dry-run
 // See docs/RUNBOOK.md. Every optional module is skipped with a clear message when its key or file is missing.
 import { existsSync, mkdirSync, openSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { basename, join, resolve } from 'node:path';
-import { LOCAL_URL, ROOT, errText, fetchT, ffmpegPath, loadEnv, parseFlags, probeCanvas, sleep, trimUrl } from './lib/common.mjs';
-import { boardBounds, kitToLaneOps } from './lib/kit-lane.mjs';
-import { mockKit } from './lib/mock-kit.mjs';
+import { LOCAL_URL, ROOT, errText, ffmpegPath, loadEnv, parseFlags, probeCanvas, sleep, trimUrl } from './lib/common.mjs';
 import { findChrome } from '../src/chrome-path.js';
 
 loadEnv();
 
 const USAGE = `usage: npm run teardown -- <url> [options]
-       npm run teardown -- --mock [--fixture fernly|ignura]
+       npm run teardown -- --mock [--fixture ignura|fernly]
        npm run teardown -- --replay <runDir>
 
   --canvas URL       where to draw (default $CANVAS_URL, else ${LOCAL_URL}). A localhost canvas is started for you if it is down.
   --live             animate: one step at a time instead of all at once
-  --no-clear         keep what is already on the board (default: clear it first)
-  --kit              also generate ads + X/Reddit campaigns + a UGC plan and draw them (live mode; always on for --mock)
+  --clear / --no-clear  wipe the board first / keep what is there. Default: a localhost canvas is cleared, a REMOTE canvas (the shared
+                     https://ignura.com/astrahack board) is never cleared unless you pass --clear
+  --kit              also generate ads + X/Reddit campaigns + a UGC plan and draw them (always on for --mock --fixture ignura)
   --no-kit           skip the kit
   --agent MODE       auto (default), astra (agent/run.mjs, needs OPENAI_API_KEY), runner (scripted journeys, no key), custom ($ASTRAHACK_AGENT_CMD)
   --brief TEXT       what the agent should look at, and the product context for the kit
@@ -45,8 +44,8 @@ const USAGE = `usage: npm run teardown -- <url> [options]
 let flags;
 try {
   flags = parseFlags(process.argv.slice(2), {
-    canvas: { type: 'string' }, live: { type: 'boolean' }, 'no-clear': { type: 'boolean' }, kit: { type: 'boolean' }, 'no-kit': { type: 'boolean' },
-    mock: { type: 'boolean' }, fixture: { type: 'string', default: 'fernly' }, replay: { type: 'string' }, agent: { type: 'string', default: 'auto' },
+    canvas: { type: 'string' }, live: { type: 'boolean' }, 'no-clear': { type: 'boolean' }, clear: { type: 'boolean' }, kit: { type: 'boolean' }, 'no-kit': { type: 'boolean' },
+    mock: { type: 'boolean' }, fixture: { type: 'string', default: 'ignura' }, replay: { type: 'string' }, agent: { type: 'string', default: 'auto' },
     brief: { type: 'string', default: '' }, paths: { type: 'string', default: '' }, config: { type: 'string' }, headed: { type: 'boolean' },
     'max-minutes': { type: 'number', default: 10 }, out: { type: 'string' }, open: { type: 'boolean' }, 'no-start': { type: 'boolean' },
     'no-install': { type: 'boolean' }, 'dry-run': { type: 'boolean' }, delay: { type: 'number' }, help: { type: 'boolean' },
@@ -62,7 +61,7 @@ if (!['auto', 'astra', 'runner', 'custom'].includes(flags.agent)) { console.erro
 
 let CANVAS = trimUrl(flags.canvas || process.env.CANVAS_URL || LOCAL_URL);
 const api = (p) => `${CANVAS}/api${p}`;
-const wantKit = flags['no-kit'] ? false : flags.kit || mode === 'mock';
+const wantKit = flags['no-kit'] ? false : flags.kit || (mode === 'mock' && flags.fixture === 'ignura');
 const notes = []; // things skipped or degraded, printed at the end
 const step = (n, msg) => console.log(`\n[${n}] ${msg}`);
 const note = (msg) => { notes.push(msg); console.log(`    skipped: ${msg}`); };
@@ -128,7 +127,10 @@ async function ensureCanvas() {
 // ---------------------------------------------------------------------------------------------------------------
 // 2. the teardown itself -> a run directory (or the board directly)
 // ---------------------------------------------------------------------------------------------------------------
-const clearArgs = () => (flags['no-clear'] ? [] : ['--clear']);
+// Clearing wipes everything for everyone. Local boards are cleared by default; a remote (shared) board only with an explicit --clear.
+const isLocalCanvas = () => ['localhost', '127.0.0.1', '[::1]', '::1'].includes(new URL(CANVAS).hostname);
+const shouldClear = () => (flags['no-clear'] ? false : flags.clear || isLocalCanvas());
+const clearArgs = () => (shouldClear() ? ['--clear'] : []);
 const liveArgs = () => (flags.live ? ['--live'] : []);
 const delayArgs = () => (flags.delay != null ? ['--delay', String(flags.delay)] : []);
 
@@ -145,7 +147,7 @@ async function boardMock() {
     return { runDir: dir, report: readJson(join(dir, 'report.json')), source: 'fixture ignura' };
   }
   console.log('    fixture: "Fernly", a fictional plant-care app. Say "prepared sample run" out loud.');
-  const code = await run(node, [join(ROOT, 'canvas/scripts/seed-demo.mjs'), '--canvas', CANVAS, ...liveArgs(), ...(flags['no-clear'] ? ['--no-clear'] : [])]);
+  const code = await run(node, [join(ROOT, 'canvas/scripts/seed-demo.mjs'), '--canvas', CANVAS, ...liveArgs(), ...(shouldClear() ? [] : ['--no-clear'])]);
   if (code !== 0) throw new Error(`seed-demo failed (exit ${code})`);
   return { runDir: null, report: { product: { title: 'Fernly', description: 'A plant-care app: reminders, light checks and care tips.' } }, source: 'seed Fernly' };
 }
@@ -202,7 +204,7 @@ async function boardLive() {
   if (agent === 'astra') {
     const args = [join(ROOT, 'agent/run.mjs'), url, '--canvas', CANVAS, '--out', out, '--max-minutes', String(flags['max-minutes'])];
     if (flags.brief) args.push('--brief', flags.brief);
-    if (!flags['no-clear']) args.push('--clear-canvas');
+    if (shouldClear()) args.push('--clear-canvas');
     if (flags.headed) args.push('--headed');
     const code = await run(node, args);
     if (code === 2 || code === 127) throw new Error(`the Astra agent failed to run (exit ${code})`);
@@ -253,114 +255,85 @@ function briefFrom(report, target) {
   return bits.join('\n');
 }
 
+// Inputs for canvas/scripts/push-kit.mjs: { ads: dir|null, campaigns: [dir], ugc: file|null, notes }
 async function resolveKit(board) {
-  const report = board.report;
-  const name = report?.product?.title || report?.name || (url ? hostOf(url) : 'Your product');
+  const kit = { ads: null, campaigns: [], ugc: null };
+  const env = process.env;
+  const have = (f) => existsSync(join(ROOT, f));
+
   if (mode === 'mock') {
-    const kit = mockKit({ name: flags.fixture === 'fernly' ? 'Fernly' : name.split(/[·|–-]/)[0].trim(), oneLiner: report?.product?.description?.slice(0, 120) });
-    if (flags.fixture === 'ignura') {
-      const plan = readJson(join(ROOT, 'ugc/fixtures/ignura/ugc-plan.json'));
-      if (plan) kit.ugc = { source: 'fixture plan', hooks: plan.hooks.slice(0, 6), scripts: plan.scripts };
-    }
+    if (flags.fixture !== 'ignura') { note('kit: the Fernly sample has no kit fixtures; use --fixture ignura for the full three-lane board'); return null; }
+    const fx = join(ROOT, 'scripts/fixtures/mock-kit');
+    kit.ads = join(fx, 'ads');
+    kit.campaigns = [join(fx, 'campaigns')];
+    kit.ugc = join(ROOT, 'ugc/fixtures/ignura/ugc-plan.json');
+    console.log('    sample kit from scripts/fixtures/mock-kit: placeholder ad images, sample X/Reddit drafts, the ignura UGC plan (no model was called)');
     return kit;
   }
+
   const kitDir = join(board.runDir || resolve(flags.out || join(ROOT, 'runs', `teardown-${stamp()}`)), 'kit');
   mkdirSync(kitDir, { recursive: true });
-  const brief = briefFrom(report, url);
   const briefFile = join(kitDir, 'brief.txt');
-  writeFileSync(briefFile, brief);
-  const kit = { label: `generated from ${board.source}`, ads: [], campaigns: [], ugc: null };
-  const env = process.env;
+  writeFileSync(briefFile, briefFrom(board.report, url));
 
-  // ads
+  // ads: real images with a key, otherwise the five prompts only (push-kit draws grey "not generated yet" cards with the art direction)
   const imgProvider = (env.IMAGE_PROVIDER || 'gemini').toLowerCase();
   const imgKey = imgProvider === 'openai' ? env.OPENAI_API_KEY : env.GEMINI_API_KEY;
-  if (!existsSync(join(ROOT, 'generate.mjs'))) note('ads: generate.mjs not found');
-  else if (!(imgKey || '').trim()) note(`ads: ${imgProvider === 'openai' ? 'OPENAI_API_KEY' : 'GEMINI_API_KEY'} not set (npm run generate -- --prompt-file ${briefFile} --dry-run shows the five prompts)`);
+  if (!have('generate.mjs')) note('ads: generate.mjs not found');
   else {
     const out = join(kitDir, 'ads');
-    const code = await run(node, [join(ROOT, 'generate.mjs'), '--prompt-file', briefFile, '--out', out]);
-    const dir = latest(out, 'ads-');
-    const manifest = dir && readJson(join(dir, 'manifest.json'));
-    if (manifest) {
-      for (const c of manifest.creatives || []) if (c.status === 'complete' && existsSync(join(dir, c.filename))) kit.ads.push({ angle: c.name, headline: c.name, body: '', image: join(dir, c.filename) });
-    }
-    if (!kit.ads.length) note(`ads: generation produced no images (exit ${code}); see ${dir || out}`);
+    const dry = !(imgKey || '').trim();
+    if (dry) note(`ads: ${imgProvider === 'openai' ? 'OPENAI_API_KEY' : 'GEMINI_API_KEY'} not set, so the board gets the five ad prompts as grey cards instead of images`);
+    const code = await run(node, [join(ROOT, 'generate.mjs'), '--prompt-file', briefFile, '--out', out, ...(dry ? ['--dry-run'] : [])]);
+    kit.ads = latest(out, 'ads-');
+    if (!kit.ads) note(`ads: generator produced nothing (exit ${code})`);
   }
 
-  // campaigns
-  if (!existsSync(join(ROOT, 'campaigns.mjs'))) note('campaigns: campaigns.mjs not found');
-  else if (!(env.GEMINI_API_KEY || '').trim()) note(`campaigns: GEMINI_API_KEY not set (npm run campaigns -- --prompt-file ${briefFile} --dry-run shows the prompts)`);
+  // campaigns: need Gemini (a dry run writes prompts only, nothing to draw)
+  if (!have('campaigns.mjs')) note('campaigns: campaigns.mjs not found');
+  else if (!(env.GEMINI_API_KEY || '').trim()) note('campaigns: GEMINI_API_KEY not set (X/Reddit drafts are not generated)');
   else {
     const out = join(kitDir, 'campaigns');
     const code = await run(node, [join(ROOT, 'campaigns.mjs'), '--prompt-file', briefFile, '--out', out]);
     const dir = latest(out, 'campaigns-');
-    for (const ch of ['x', 'reddit']) {
-      const c = dir && readJson(join(dir, `${ch}-campaign.json`));
-      if (c) kit.campaigns.push({ channel: ch, title: c.title, objective: c.objective, posts: (c.posts || []).map((p) => ({ title: p.title || p.angle, copy: p.copy })) });
-    }
-    if (!kit.campaigns.length) note(`campaigns: no campaign files produced (exit ${code})`);
+    if (dir) kit.campaigns.push(dir); else note(`campaigns: no campaign files produced (exit ${code})`);
   }
 
-  // ugc
-  if (!existsSync(join(ROOT, 'bin/ugc.js'))) note('ugc: bin/ugc.js not found');
-  else if (!board.runDir || !existsSync(join(board.runDir, 'report.json'))) note('ugc: needs a report.json in the run directory');
+  // ugc: a model with a key, the deterministic grounded plan without one
+  if (!have('bin/ugc.js')) note('ugc: bin/ugc.js not found');
+  else if (!board.runDir || !existsSync(join(board.runDir, 'report.json'))) note('ugc: needs a runner report.json in the run directory');
   else {
     const hasKey = (env.GEMINI_API_KEY || env.OPENAI_API_KEY || '').trim();
     const out = join(kitDir, 'ugc');
-    const args = [join(ROOT, 'bin/ugc.js'), board.runDir, '--brief-file', briefFile, '--out', out];
-    if (!hasKey) { args.push('--mock'); console.log('    ugc: no model key, using the deterministic grounded plan (--mock)'); }
-    const code = await run(node, args);
-    const plan = readJson(join(out, 'ugc-plan.json'));
-    if (plan) kit.ugc = { source: plan.model === 'mock' ? 'deterministic, no model' : plan.model, hooks: plan.hooks.slice(0, 6), scripts: plan.scripts };
-    else note(`ugc: planner failed (exit ${code}); the agent report may not match the runner report shape`);
+    if (!hasKey) console.log('    ugc: no model key, using the deterministic grounded plan (--mock)');
+    const code = await run(node, [join(ROOT, 'bin/ugc.js'), board.runDir, '--brief-file', briefFile, '--out', out, ...(hasKey ? [] : ['--mock'])]);
+    if (existsSync(join(out, 'ugc-plan.json'))) kit.ugc = join(out, 'ugc-plan.json');
+    else note(`ugc: planner exited ${code} (message above). A run with very few pages gives it too little to plan from; pass --paths /a,/b to visit more`);
   }
   return kit;
 }
 
 function latest(dir, prefix) {
   try {
-    const names = readdirSyncSafe(dir).filter((n) => n.startsWith(prefix)).sort();
+    const names = readdirSync(dir).filter((n) => n.startsWith(prefix)).sort();
     return names.length ? join(dir, names.at(-1)) : null;
   } catch { return null; }
 }
-function readdirSyncSafe(d) { try { return readdirSync(d); } catch { return []; } }
-
-async function uploadImage(src) {
-  if (!src) return null;
-  if (/^(data:|https?:\/\/|\/)/.test(src)) return src;
-  const { readFile } = await import('node:fs/promises');
-  const buf = await readFile(src);
-  const fd = new FormData();
-  fd.append('file', new Blob([buf], { type: 'image/png' }), basename(src));
-  const res = await fetchT(api('/upload'), { method: 'POST', body: fd }, 60000);
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok || !body.url) throw new Error(`upload ${basename(src)} failed: HTTP ${res.status} ${body.error || ''}`);
-  return body.url;
-}
 
 async function pushKit(kit, board) {
-  if (!kit) return;
-  const pushKitScript = join(ROOT, 'canvas/scripts/push-kit.mjs');
-  if (existsSync(pushKitScript) && board.runDir && mode !== 'mock') {
-    console.log('    using canvas/scripts/push-kit.mjs');
-    const code = await run(node, [pushKitScript, join(board.runDir, 'kit'), '--canvas', CANVAS, ...liveArgs()]);
-    if (code === 0) return;
-    note('push-kit.mjs failed; falling back to the built-in kit lane');
-  }
-  const st = await probeCanvas(CANVAS, 10000);
-  const { maxX, minY } = boardBounds(st.ok ? st.ops : []);
-  const { groups } = await kitToLaneOps(kit, { x: maxX + 600, y: minY, prefix: `kit${Date.now().toString(36).slice(-4)}`, resolveImage: uploadImage });
-  const n = groups.flat().length;
-  console.log(`    drawing the kit lane: ${kit.ads?.length || 0} ads, ${kit.campaigns?.length || 0} campaigns, ${kit.ugc?.hooks?.length || 0} hooks (${n} ops)`);
-  if (flags['dry-run']) return;
-  const delay = flags.delay ?? (flags.live ? 350 : 0);
-  const batches = flags.live ? groups : [groups.flat()];
-  for (const [i, g] of batches.entries()) {
-    const res = await fetchT(api('/ops'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(g) }, 30000);
-    if (!res.ok) throw new Error(`POST /api/ops failed: HTTP ${res.status} ${(await res.text()).slice(0, 300)}`);
-    if (delay && i < batches.length - 1) await sleep(delay);
-  }
+  const script = join(ROOT, 'canvas/scripts/push-kit.mjs');
+  if (!existsSync(script)) { note('kit: canvas/scripts/push-kit.mjs not found (pull main)'); return false; }
+  const args = [script];
+  if (kit.ads) args.push('--ads', kit.ads);
+  for (const c of kit.campaigns) args.push('--campaigns', c);
+  if (kit.ugc) args.push('--ugc', kit.ugc);
+  if (!kit.ads && !kit.campaigns.length && !kit.ugc) { note('kit: nothing to draw (every generator was skipped)'); return false; }
+  if (board.runDir && ['report.json', 'qa-agent.json'].some((f) => existsSync(join(board.runDir, f)))) args.push('--run', board.runDir);
+  args.push('--canvas', CANVAS, ...liveArgs(), ...delayArgs());
+  args.push('--replace'); // only removes kit-* / ad-* / gtm-* / ugc-* ids, never the teardown
+  const code = await run(node, args);
+  if (code !== 0) { note(`kit: push-kit.mjs failed (exit ${code})`); return false; }
+  return true;
 }
 
 function openBrowser(u) {
@@ -373,6 +346,7 @@ async function main() {
   console.log(`AstraHack teardown  mode=${mode}${url ? `  url=${url}` : ''}  canvas=${CANVAS}${flags['dry-run'] ? '  (dry run)' : ''}`);
   step(1, 'canvas');
   const canvas = await ensureCanvas();
+  console.log(shouldClear() ? '    the board is cleared first (local canvas; --no-clear keeps it)' : '    existing board content is kept (shared/remote canvas; pass --clear to wipe it)');
 
   step(2, mode === 'mock' ? 'sample board' : mode === 'replay' ? 'replay a recorded run' : 'teardown run');
   const board = mode === 'mock' ? await boardMock() : mode === 'replay' ? await boardReplay() : await boardLive();
@@ -380,7 +354,7 @@ async function main() {
   let kitDone = false;
   if (wantKit) {
     step(3, 'launch kit: ads, campaigns, UGC plan');
-    try { const kit = await resolveKit(board); if (kit.ads?.length || kit.campaigns?.length || kit.ugc) { await pushKit(kit, board); kitDone = true; } else note('kit: nothing to draw (all generators skipped)'); }
+    try { const kit = await resolveKit(board); if (kit) kitDone = await pushKit(kit, board); }
     catch (e) { note(`kit failed: ${errText(e)}`); }
   } else if (mode === 'live' || mode === 'replay') {
     console.log('\n(no kit requested: add --kit for ads, X/Reddit campaigns and a UGC plan)');

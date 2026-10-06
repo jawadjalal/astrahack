@@ -1,0 +1,194 @@
+{
+  "title": "Ignura on Reddit: useful first, product second",
+  "objective": "Earn trust in founder communities and answer launch questions honestly.",
+  "audience": "Placeholder to be edited before use",
+  "positioning": "Placeholder to be edited before use",
+  "assumptions": [
+    "Placeholder to be edited before use"
+  ],
+  "strategy": "Placeholder to be edited before use",
+  "posts": [
+    {
+      "id": "reddit-1",
+      "angle": "Honest and useful",
+      "audience": "Founders about to launch an app",
+      "title": "What I check in every app teardown before a launch",
+      "copy": "I work at Ignura, a launch studio, so take this with that in mind. Before an app launches we walk it like a first-time user: does the first screen say what it does, would a stranger tap the main button, is the pricing clear. Most of the problems are in the first 30 seconds, not in the features. Here is the checklist we use for the first-run screens, in order. I am happy to look at your onboarding if you want a second pair of eyes; no pitch, just notes.",
+      "cta": "Placeholder to be edited before use",
+      "rationale": "Placeholder to be edited before use"
+    },
+    {
+      "id": "reddit-2",
+      "angle": "Honest and useful",
+      "audience": "Founders about to launch an app",
+      "title": "How we structure a four-week launch for a consumer app",
+      "copy": "Disclosure: I am on the team at Ignura. We plan launches in four weeks: week one teardown and plan, week two polish and page, week three film and UGC, week four launch day. The part founders skip is week one. Without a plan the rest turns into guessing. Curious how others here sequence theirs, and what you would move earlier or later.",
+      "cta": "Placeholder to be edited before use",
+      "rationale": "Placeholder to be edited before use"
+    },
+    {
+      "id": "reddit-3",
+      "angle": "Honest and useful",
+      "audience": "Founders about to launch an app",
+      "title": "UGC for apps: what to put in a creator brief",
+      "copy": "Full disclosure: I work for a launch studio that makes UGC for apps. The brief matters more than the creator. Say what the viewer should see in the first two seconds, which screens to show, and what the one claim is. Then let the creator say it in their own words. Content that does not look like ads travels further. What has worked for you?",
+      "cta": "Placeholder to be edited before use",
+      "rationale": "Placeholder to be edited before use"
+    }
+  ],
+  "communities": [
+    {
+      "candidate": "Placeholder to be edited before use",
+      "fit": "Placeholder to be edited before use",
+      "verification": "Placeholder to be edited before use"
+    },
+    {
+      "candidate": "Placeholder to be edited before use",
+      "fit": "Placeholder to be edited before use",
+      "verification": "Placeholder to be edited before use"
+    },
+    {
+      "candidate": "Placeholder to be edited before use",
+      "fit": "Placeholder to be edited before use",
+      "verification": "Placeholder to be edited before use"
+    }
+  ],
+  "replies": [
+    {
+      "situation": "Placeholder to be edited before use",
+      "copy": "Placeholder to be edited before use"
+    },
+    {
+      "situation": "Placeholder to be edited before use",
+      "copy": "Placeholder to be edited before use"
+    },
+    {
+      "situation": "Placeholder to be edited before use",
+      "copy": "Placeholder to be edited before use"
+    },
+    {
+      "situation": "Placeholder to be edited before use",
+      "copy": "Placeholder to be edited before use"
+    },
+    {
+      "situation": "Placeholder to be edited before use",
+      "copy": "Placeholder to be edited before use"
+    }
+  ],
+  "communityApproach": "Placeholder to be edited before use",
+  "calendar": [
+    {
+      "day": 1,
+      "action": "Placeholder to be edited before use",
+      "contentId": "reddit-1",
+      "purpose": "Placeholder to be edited before use"
+    },
+    {
+      "day": 2,
+      "action": "Placeholder to be edited before use",
+      "contentId": "reddit-2",
+      "purpose": "Placeholder to be edited before use"
+    },
+    {
+      "day": 3,
+      "action": "Placeholder to be edited before use",
+      "contentId": "reddit-3",
+      "purpose": "Placeholder to be edited before use"
+    },
+    {
+      "day": 4,
+      "action": "Placeholder to be edited before use",
+      "contentId": "reddit-1",
+      "purpose": "Placeholder to be edited before use"
+    },
+    {
+      "day": 5,
+      "action": "Placeholder to be edited before use",
+      "contentId": "reddit-2",
+      "purpose": "Placeholder to be edited before use"
+    },
+    {
+      "day": 6,
+      "action": "Placeholder to be edited before use",
+      "contentId": "reddit-3",
+      "purpose": "Placeholder to be edited before use"
+    },
+    {
+      "day": 7,
+      "action": "Placeholder to be edited before use",
+      "contentId": "reddit-1",
+      "purpose": "Placeholder to be edited before use"
+    },
+    {
+      "day": 8,
+      "action": "Placeholder to be edited before use",
+      "contentId": "reddit-2",
+      "purpose": "Placeholder to be edited before use"
+    },
+    {
+      "day": 9,
+      "action": "Placeholder to be edited before use",
+      "contentId": "reddit-3",
+      "purpose": "Placeholder to be edited before use"
+    },
+    {
+      "day": 10,
+      "action": "Placeholder to be edited before use",
+      "contentId": "reddit-1",
+      "purpose": "Placeholder to be edited before use"
+    },
+    {
+      "day": 11,
+      "action": "Placeholder to be edited before use",
+      "contentId": "reddit-2",
+      "purpose": "Placeholder to be edited before use"
+    },
+    {
+      "day": 12,
+      "action": "Placeholder to be edited before use",
+      "contentId": "reddit-3",
+      "purpose": "Placeholder to be edited before use"
+    },
+    {
+      "day": 13,
+      "action": "Placeholder to be edited before use",
+      "contentId": "reddit-1",
+      "purpose": "Placeholder to be edited before use"
+    },
+    {
+      "day": 14,
+      "action": "Placeholder to be edited before use",
+      "contentId": "reddit-2",
+      "purpose": "Placeholder to be edited before use"
+    }
+  ],
+  "conversion": "Placeholder to be edited before use",
+  "measurement": "Placeholder to be edited before use",
+  "experiments": [
+    {
+      "hypothesis": "Placeholder to be edited before use",
+      "variants": "Placeholder to be edited before use",
+      "metric": "Placeholder to be edited before use",
+      "decision": "Placeholder to be edited before use"
+    },
+    {
+      "hypothesis": "Placeholder to be edited before use",
+      "variants": "Placeholder to be edited before use",
+      "metric": "Placeholder to be edited before use",
+      "decision": "Placeholder to be edited before use"
+    },
+    {
+      "hypothesis": "Placeholder to be edited before use",
+      "variants": "Placeholder to be edited before use",
+      "metric": "Placeholder to be edited before use",
+      "decision": "Placeholder to be edited before use"
+    }
+  ],
+  "launchChecklist": [
+    "Placeholder to be edited before use",
+    "Placeholder to be edited before use",
+    "Placeholder to be edited before use",
+    "Placeholder to be edited before use",
+    "Placeholder to be edited before use"
+  ]
+}
