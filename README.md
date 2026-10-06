@@ -1,24 +1,42 @@
-# Astra Hack
+# Astra — five ad creatives from one prompt
 
-Generate clean, effective marketing creatives from supplied product screenshots, product information, and brand assets using OpenAI.
+A small Node.js script that takes a product/ad prompt and generates **five distinct square 1024×1024 PNG ads** using OpenAI. No website, app, or computer-use implementation. No dependencies.
 
-## Status
+## Run
 
-Planning only. The current scope is creative generation. No application has been implemented.
+Requires Node.js 22.9 or newer. Put your OpenAI API key in a local `.env` file using `.env.example`, or set `OPENAI_API_KEY` in the environment.
 
-## Proposed journey
+```sh
+npm run generate -- --prompt "Your product facts, audience, brand, and ad message"
+```
 
-1. Supply screenshots, product details, brand assets, and a creative goal.
-2. Develop distinct creative concepts and copy.
-3. Generate and compose polished creative variations.
-4. Review, revise, and download results.
+Or read a longer prompt from a file:
 
-## Documentation
+```sh
+npm run generate -- --prompt-file brief.txt --out artifacts
+```
 
-- [Product scope and quality](docs/PRODUCT.md)
-- [Creative workflow](docs/WORKFLOW.md)
-- [Questions and decisions](docs/QUESTIONS.md)
+**No API key yet?** Prepare all five prompts without making any API calls:
 
-## Credentials
+```sh
+npm run generate -- --prompt "Your product and campaign brief" --dry-run
+```
 
-The user will supply an OpenAI API key. Configure it securely at runtime; never commit it or expose it in browser code. Models and supported API operations will be verified during implementation.
+Each run creates a unique folder under `artifacts/` with five PNG files and `manifest.json`, which records prompts and completion/failure status. Dry runs create only the manifest, not images. Output folders and `.env` are ignored by Git.
+
+## What it does
+
+Uses five art directions: hero, editorial, benefit, context, and typography. Each incorporates the supplied prompt and asks for a clean product-specific ad without unsupported claims. Sends five image requests, at most two concurrently. Preserves successful images if another request fails; exits unsuccessfully for incomplete sets. No automatic paid retries.
+
+Default model: `gpt-image-2`, configurable with `OPENAI_IMAGE_MODEL`. Calls the [OpenAI Images API](https://developers.openai.com/api/reference/resources/images/methods/generate). The chosen model must support square PNG generation.
+
+## Verify
+
+```sh
+npm run check
+npm test
+```
+
+Six tests cover five-image generation requests, dry runs, missing keys, partial failure, invalid/non-square responses, and empty prompts. Tests use a mocked provider; real API access and image quality remain unverified until a key is supplied.
+
+[Product scope](docs/PRODUCT.md) · [Workflow](docs/WORKFLOW.md) · [Code integration](docs/INTEGRATION.md) · [Decisions](docs/QUESTIONS.md)
