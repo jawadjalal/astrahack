@@ -95,40 +95,46 @@ The report records observed facts only. Downstream agents should treat marketing
 
 Exit status is `0` for a passing run, `1` for QA findings, and `2` for setup or runtime errors. Run `npm test` for the local fixture integration test.
 
-### QA crawl and Astra agent
+### Adaptive computer-use QA fleet
 
-The QA pipeline has three stages. A bounded crawler follows same-origin HTML links and saves a page inventory. Independent GPT-6 Astra computer-use agents then exercise read-only flows in separate Chrome sessions, with up to `concurrency` agents active at once. Every crawled page receives a journey agent first. The fleet then assigns agents to new routes found through computer use, followed by separate feature-mapping and control-testing missions until `maxAgents` is reached. Their screenshots and observations are combined for QA analysis and feature selection.
+The crawler inventories same-origin pages and saves screenshots. The fleet then starts three distinct scouts: a user journey, a feature map, and a controls or navigation audit. Additional workers cover observed pages and newly discovered routes or controls. Each worker has its own Chrome profile and uses screenshot-driven mouse and keyboard actions through the OpenAI `computer` tool. The initial inventory is sequential; worker missions run concurrently.
 
-Copy and edit [`examples/qa.json`](examples/qa.json), then run:
+**GPT-6 Luna is the default.** Agent count follows the discovered work, with no fixed 60-agent allocation. Up to eight browsers run at once by default. One shared budget permits 30 API requests, five minutes (including initial crawl time), and 2,048 output tokens per response. These are request/time/token limits, not a guaranteed dollar cap. Actual API token usage is recorded. There are no automatic paid retries or model upgrades. Set `OPENAI_QA_MODEL` or pass `--model` for a deliberate targeted rerun with another model.
+
+Copy [`examples/qa.json`](examples/qa.json), set its URL, and put `OPENAI_API_KEY` in the ignored local `.env`. Then run:
 
 ```sh
 ASTRAHACK_CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
-  npm run qa -- crawl examples/qa.json --output runs/site-crawl
-
-OPENAI_API_KEY=... ASTRAHACK_CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
-  npm run qa -- fleet examples/qa.json --output runs/site-fleet
+  node bin/qa.js fleet examples/qa.json --output runs/site-fleet
 ```
 
-The fleet command runs the crawl automatically. It writes `crawl.json`, `fleet.json`, a combined `qa-agent.json`, and one `workers/A###/qa-agent.json` per worker. `fleet.json` lists each page assignment, status, coverage gaps, and screenshot observations. The combined `qa-agent.json` retains worker IDs and global action numbers so the QA analyst can cite exact evidence. To review the result:
+The CLI loads `.env`. For a small live pilot, add `--max-agents 3 --concurrency 3 --max-turns 3 --max-requests 9`. Omit `maxAgents` for adaptive allocation; an explicit ceiling must be at least three. `maxTurns` and `maxActions` apply per worker, while `maxRequests` and `maxDurationMs` are shared. To collect evidence without API charges, use `crawl` instead of `fleet`; `agent` runs a single targeted worker.
+
+The fleet writes `crawl.json`, `fleet.json`, a combined `qa-agent.json`, and `workers/A###/qa-agent.json`. Reports include worker IDs, globally numbered actions, actual token usage, screenshots, unscheduled missions, failed workers, and uncovered routes. An unfinished fleet reports partial coverage and exits with status 1; setup errors exit with status 2. Reaching a limit never means the whole site passed QA.
+
+The browser adapter supports clicks, double clicks, scrolling, dragging, typing, and keyboard chords. It blocks external links and several consequential control labels. Native dialogs and authenticated sessions are outside the current isolated-profile setup. Assessments remain separate from action records; missing evidence references are marked unverified.
+
+### Feature screenshots, analysis, and canvas
+
+The downstream agents also default to Luna. They review observed evidence, produce a curated screenshot set and QA findings, and explicitly list coverage gaps. Each stage makes its own API call outside the fleet budget:
 
 ```sh
-OPENAI_API_KEY=... node bin/analyze-qa.js runs/site-fleet
-OPENAI_API_KEY=... node bin/feature-capture.js runs/site-fleet/fleet.json
+node --env-file-if-exists=.env bin/analyze-qa.js runs/site-fleet
+node --env-file-if-exists=.env bin/feature-capture.js runs/site-fleet/fleet.json
 ```
 
-For a single targeted computer-use session, use `npm run qa -- agent examples/qa.json --output runs/site-agent`. The agents use the OpenAI Responses API with model `gpt-6-astra` and its `computer` tool. Each sends viewport screenshots to the API, then executes bounded mouse and keyboard actions in Chrome. `maxTurns` and `maxActions` apply **per agent**; `maxAgents` and `concurrency` bound the fleet. The adapter blocks external links and several consequential button labels, and resets navigation if a page leaves the starting origin. Run against a test account and review any site that can make consequential changes through innocuous controls. Agent assessments stay separate from observed action records; issue references without a matching evidence step are marked unverified.
+Models can be overridden with `OPENAI_QA_ANALYSIS_MODEL`, `OPENAI_SCREENSHOT_MODEL`, or each CLI's `--model` option. Captures are written under `feature-captures/`; analysis writes `qa-analysis.json` and `qa-analysis.md`. See the [capture contract](docs/FEATURE_CAPTURE_CONTRACT.md) and [QA analysis guide](docs/QA_ANALYSIS.md).
 
-The default fleet can schedule up to 60 independent agents across up to 50 crawled pages, running eight browsers at a time; raise the limits in the config for larger sites. The crawler does not bypass login or infer all features from links alone. Workers start from assigned pages, but their exploration is model-guided and may leave some controls untested; coverage is reported rather than assumed. The browser adapter cannot handle native dialogs. The `OPENAI_API_KEY` variable is needed for the model-driven stages. Local tests use mocked API responses and do not incur API charges.
-
-### Capture major feature screenshots
-
-After a run, use the dedicated feature capture agent to review the observed screens with GPT-6 Astra and create a curated screenshot set:
+To place evidence and curated features on a running canvas:
 
 ```sh
-OPENAI_API_KEY=... node bin/feature-capture.js runs/example/report.json
+node canvas/scripts/push-run.mjs runs/site-fleet --canvas http://localhost:3000
+node bin/feature-canvas.js runs/site-fleet/feature-captures/manifest.json --canvas-url http://localhost:3000
 ```
 
-It writes `feature-captures/manifest.json` and selected PNGs beside the QA report. The manifest links each screenshot to its source observation and lists evidence gaps. The QA report remains the input contract; see [the capture contract](docs/FEATURE_CAPTURE_CONTRACT.md) for the supported crawler shape and limitations. The agent requires an OpenAI API key and sends short page observations to the Responses API.
+These import commands add to the canvas. See [canvas integration](docs/CANVAS_INTEGRATION.md) for server startup and the shared operations used by screenshots, findings, creative images, and campaign text. The QA workers do not generate ad creatives or UGC plans; those workstreams can consume this evidence and use the same canvas contract.
+
+Run `npm test` for the local runner/fleet tests, which use real isolated Chrome sessions with mocked API responses and incur no model charges. Canvas checks are separate under `canvas/`.
 
 ## Generate five square ad creatives
 

@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=22.9" },
+  "engines": {
+    "node": ">=22.9"
+  },
   "bin": {
     "astrahack": "./bin/astrahack.js",
     "astrahack-qa": "./bin/qa.js"
@@ -13,7 +15,7 @@
     "qa": "node bin/qa.js",
     "capture-features": "node bin/feature-capture.js",
     "generate": "node --env-file-if-exists=.env generate.mjs",
-    "test": "node --test",
+    "test": "node --test test/*.test.js test/*.test.mjs",
     "check": "node --check generate.mjs && node --check lib/generate.mjs"
   }
 }

@@ -32,7 +32,7 @@ test('bounded crawler inventories linked pages and writes evidence', { skip: !ex
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
 
-test('Astra computer loop records actions and verifies evidence references', { skip: !existsSync(chrome) }, async () => {
+test('Luna computer loop records actions and verifies evidence references', { skip: !existsSync(chrome) }, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'astrahack-agent-test-'));
   try {
     const fixture = join(directory, 'app.html');
@@ -54,9 +54,12 @@ test('Astra computer loop records actions and verifies evidence references', { s
     assert.equal(report.status, 'completed', report.error);
     assert.equal(report.steps.length, 1);
     assert.equal(report.assessment.issues[0].evidence, report.steps[0].screenshot);
-    assert.equal(calls[0].model, 'gpt-6-astra');
+    assert.equal(calls[0].model, 'gpt-6-luna');
     assert.equal(calls[1].previous_response_id, 'resp-1');
     assert.equal(calls[1].input[0].call_id, 'call-1');
+    assert.equal(JSON.parse(calls[1].input[1].content[0].text).executedSteps[0].step, 1);
+    assert.equal(calls[0].max_output_tokens, 2048);
+    assert.equal(report.usage.requests, 2);
     assert.ok((await stat(join(out, report.steps[0].screenshot))).size > 100);
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
