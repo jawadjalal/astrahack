@@ -1,36 +1,24 @@
 # Astra Hack
 
-Turn a working app into clean, product-grounded marketing creatives.
-
-An agent explores a supplied example app, clicks through its screens and flows, captures screenshots and observations, and uses that evidence with OpenAI to generate creative assets.
+Generate clean, effective marketing creatives from supplied product screenshots, product information, and brand assets using OpenAI.
 
 ## Status
 
-Planning only. No application has been implemented. Requirements below distinguish the confirmed idea from proposed implementation choices.
-
-## Confirmed direction
-
-- Explore an example app through browser interaction.
-- Capture screenshots and useful information across the app.
-- Generate clean, effective creatives from collected evidence.
-- Use an OpenAI API key supplied by the user.
+Planning only. The current scope is creative generation. No application has been implemented.
 
 ## Proposed journey
 
-1. Supply an app URL, access details, brand guidance, and creative goal.
-2. Explore reachable screens and interactions within an agreed scope.
-3. Review a coverage report, screenshots, and a grounded product brief.
-4. Generate creative concepts and selected image variations.
-5. Review, revise, and download the results.
-
-Approval steps, formats, deployment, and stack are still to be decided.
+1. Supply screenshots, product details, brand assets, and a creative goal.
+2. Develop distinct creative concepts and copy.
+3. Generate and compose polished creative variations.
+4. Review, revise, and download results.
 
 ## Documentation
 
 - [Product scope and quality](docs/PRODUCT.md)
-- [Workflow and proposed architecture](docs/WORKFLOW.md)
+- [Creative workflow](docs/WORKFLOW.md)
 - [Questions and decisions](docs/QUESTIONS.md)
 
 ## Credentials
 
-Provide API credentials through a secure runtime configuration or secret store when implementation is ready. Never commit API keys, session cookies, login passwords, or real customer screenshots. Model selection and API access must be verified before implementation.
+The user will supply an OpenAI API key. Configure it securely at runtime; never commit it or expose it in browser code. Models and supported API operations will be verified during implementation.

@@ -1,46 +1,37 @@
 # Product scope
 
-## Problem
+## Goal
 
-Creating marketing assets requires understanding the product, finding strong screens, writing accurate copy, and composing polished visuals. Astra Hack aims to connect these steps in one workflow.
+Turn supplied product materials into polished marketing creatives with accurate messaging, readable typography, and strong visual composition.
 
-## Intended outcome
+## Confirmed direction
 
-A user supplies access to an app and receives usable creatives grounded in what the agent actually observed.
+- Focus on the creative generation side.
+- Use supplied screenshots and product information as source material.
+- Generate creatives using OpenAI with a user-provided API key.
+- Prioritize clean, effective results.
 
-## Confirmed requirements
+## Proposed first version — pending decisions
 
-- The agent clicks through the app rather than relying on its homepage alone.
-- Screenshots and collected product information inform creative generation.
-- OpenAI is used with a user-provided API key.
-- Visuals should be clean and effective.
+- Upload screenshots and optional logos or brand references.
+- Enter product description, target audience, key benefit, and call to action.
+- Choose creative destination, dimensions, and variation count.
+- Generate distinct concepts and supporting copy.
+- Review, regenerate individual variations, and download finished images.
 
-## Proposed first version — pending approval
-
-- Browser-accessible web apps, one app per run.
-- Static image creatives before video.
-- A scoped exploration run with visible progress and configurable limits.
-- An evidence gallery and editable product brief.
-- Several distinct creative concepts, with regeneration of individual outputs.
-- Downloadable images and associated copy.
-
-Native mobile support, ad publishing, scheduled monitoring, billing, and collaborative workspaces are not yet agreed.
+Static images are a proposed starting point. Video, billing, ad publishing, and team features are not yet agreed.
 
 ## Quality criteria
 
-- Claims trace back to observed evidence or explicit user input.
+- Every product claim is supported by supplied materials or explicit user input.
 - No invented features, testimonials, pricing, or performance promises.
-- Each creative has a clear message, legible copy, and an intentional call to action.
-- Genuine app screenshots remain faithful to the interface when used as product proof.
-- Output dimensions and brand rules match the chosen destination.
-- Failed generations or incomplete exploration are visible.
+- Each creative has a clear message and legible copy.
+- App screenshots remain faithful when presented as product proof.
+- Brand rules, requested dimensions, and cropping are respected.
+- Variations explore meaningful differences in message or composition.
 
-“Effective” initially means meeting the creative brief and human review criteria. Conversion performance requires later measurement; it is not guaranteed by image generation.
-
-## Coverage expectations
-
-“Entire app” means all agreed, reachable screens and meaningful states within the run's access and limits. The system must report visited, skipped, blocked, and failed areas instead of claiming exhaustive coverage without evidence. Authenticated roles, hidden routes, and unbounded data can limit coverage.
+“Effective” initially means meeting the brief and human review criteria. Conversion performance needs subsequent measurement.
 
 ## Proposed demo acceptance
 
-Given an agreed demo app, the system explores the selected flows, records evidence, generates a product brief with source references, and returns at least one approved-format creative that can be downloaded. Exact scope, number of variations, runtime, and budget await user decisions.
+Given supplied product materials and a creative brief, return distinct creative variations in an agreed format, support revision, and provide downloadable images. Output count, runtime, and cost limits remain open.
