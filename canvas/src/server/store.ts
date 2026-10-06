@@ -25,7 +25,7 @@ const state: State = (g.__canvasStore ??= {
 
 export const useBlob = () => process.env.CANVAS_STORE === "blob";
 
-const CREATES = new Set(["add_image", "add_video", "add_shape", "add_arrow", "annotate", "add_finding"]);
+const CREATES = new Set(["add_image", "add_video", "add_shape", "add_arrow", "annotate", "add_finding", "draw", "arrow_to", "highlight", "add_text", "group"]);
 const ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789";
 const PREFIX = "ops/";
 const POLL_MS = 2000;

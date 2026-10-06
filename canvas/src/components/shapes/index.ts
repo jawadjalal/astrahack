@@ -9,13 +9,16 @@ import {
 } from "./FindingShape";
 import { AnnotationShapeUtil, boxOnTarget, reflowAnnotations, type AnnotationShape } from "./AnnotationShape";
 import { SEVERITY_TLDRAW_COLOR, type Severity } from "./severity";
+import { HiliteShapeUtil, type HiliteShape } from "./HiliteShape";
 
 export { VideoShapeUtil, FindingShapeUtil, AnnotationShapeUtil, reflowAnnotations };
 export { estimateFindingHeight, formatTimestamp } from "./FindingShape";
 export type { VideoShape, FindingShape, AnnotationShape };
+export { HiliteShapeUtil };
+export type { HiliteShape };
 
 /** Pass to `<Tldraw shapeUtils={customShapeUtils} />`. */
-export const customShapeUtils = [VideoShapeUtil, FindingShapeUtil, AnnotationShapeUtil];
+export const customShapeUtils = [VideoShapeUtil, FindingShapeUtil, AnnotationShapeUtil, HiliteShapeUtil];
 
 type AnnotateOp = Extract<Op, { type: "annotate" }>;
 type FindingOp = Extract<Op, { type: "add_finding" }>;

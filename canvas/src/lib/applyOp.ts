@@ -10,6 +10,7 @@ import {
 import type { Envelope, Op } from "./ops";
 import { withBase } from "./base";
 import { applyCustomOp } from "../components/shapes";
+import { applyMarkupOp, isMarkupCreate, isMarkupOp } from "./markup";
 
 export type ApplyOptions = {
   /** Move the camera to newly added shapes. */
@@ -45,26 +46,27 @@ function loadImageSize(src: string): Promise<{ w: number; h: number }> {
   });
 }
 
-function setOpacity(editor: Editor, ids: TLShapeId[], opacity: number) {
+function setOpacity(editor: Editor, ids: TLShapeId[], opacity: number | ((id: TLShapeId) => number)) {
   const partials = ids
     .map((id) => editor.getShape(id))
     .filter((s): s is NonNullable<typeof s> => !!s)
-    .map((s) => ({ id: s.id, type: s.type, opacity }) as TLShapePartial);
+    .map((s) => ({ id: s.id, type: s.type, opacity: typeof opacity === "function" ? opacity(s.id) : opacity }) as TLShapePartial);
   if (!partials.length) return;
   const ro = editor.getIsReadonly();
   if (ro) editor.updateInstanceState({ isReadonly: false });
   try {
-    editor.run(() => editor.updateShapes(partials), { history: "ignore" });
+    editor.run(() => editor.updateShapes(partials), { history: "ignore", ignoreShapeLock: true });
   } finally {
     if (ro) editor.updateInstanceState({ isReadonly: true });
   }
 }
 
-function fadeIn(editor: Editor, ids: TLShapeId[]) {
+// `rest` = the opacity each shape had before it was faded out (translucent marks keep theirs).
+function fadeIn(editor: Editor, ids: TLShapeId[], rest: Map<TLShapeId, number>) {
   const start = performance.now();
   const step = (now: number) => {
     const t = Math.max(0, Math.min(1, (now - start) / FADE_MS));
-    setOpacity(editor, ids, t);
+    setOpacity(editor, ids, (id) => t * (rest.get(id) ?? 1));
     if (t < 1) requestAnimationFrame(step);
   };
   requestAnimationFrame(step);
@@ -338,7 +340,19 @@ export async function applyEnvelope(
   if (wasReadonly) editor.updateInstanceState({ isReadonly: false });
   try {
     const before = new Set(editor.getCurrentPageShapeIds());
-    const result = await applyCore(editor, op, env.seq);
+    // Agent ops bypass shape locks (locking protects finished work from human edits, not from the
+    // agent that owns the board). Everything but add_image runs synchronously inside this call.
+    let result: "custom" | null = null;
+    let noFade = new Set<TLShapeId>();
+    if (isMarkupOp(op)) {
+      let pending!: ReturnType<typeof applyMarkupOp>;
+      editor.run(() => { pending = applyMarkupOp(editor, op, env.seq, { animate }); }, { ignoreShapeLock: true });
+      noFade = new Set((await pending).noFade);
+    } else {
+      let pending!: ReturnType<typeof applyCore>;
+      editor.run(() => { pending = applyCore(editor, op, env.seq); }, { ignoreShapeLock: true });
+      result = await pending;
+    }
 
     if (result === "custom") {
       let handled = false;
@@ -349,14 +363,20 @@ export async function applyEnvelope(
     }
 
     const added = [...editor.getCurrentPageShapeIds()].filter((i) => !before.has(i));
-    if (added.length) {
+    const fading = added.filter((i) => !noFade.has(i));
+    if (fading.length) {
       if (animate) {
-        setOpacity(editor, added, 0);
-        fadeIn(editor, added);
+        const rest = new Map(fading.map((i) => [i, editor.getShape(i)?.opacity ?? 1] as const));
+        setOpacity(editor, fading, 0);
+        fadeIn(editor, fading, rest);
       }
     }
 
-    if (follow && op.type !== "focus" && op.type !== "clear" && op.type !== "delete") {
+    if (follow && isMarkupOp(op)) {
+      // marks land on a screenshot the human is already looking at: only pan if the mark is off-screen
+      const mark = isMarkupCreate(op) && added.length ? boundsOf(editor, added) : null;
+      if (mark && !editor.getViewportPageBounds().contains(mark)) zoomTo(editor, mark, 1);
+    } else if (follow && op.type !== "focus" && op.type !== "clear" && op.type !== "delete") {
       let target: Box | null = null;
       if (op.type === "add_arrow") target = boundsOf(editor, [sid(op.from), sid(op.to)]);
       else if (added.length) target = boundsOf(editor, added);
