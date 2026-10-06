@@ -4,6 +4,7 @@ import type { Envelope } from "@/lib/ops";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+export const maxDuration = 300;
 
 export const OPTIONS = preflight;
 
@@ -14,7 +15,7 @@ export async function GET(req: Request) {
   let cleanup = () => {};
 
   const stream = new ReadableStream<Uint8Array>({
-    start(controller) {
+    async start(controller) {
       let closed = false;
       const send = (chunk: string) => {
         if (closed) return;
@@ -38,7 +39,7 @@ export async function GET(req: Request) {
         }
       });
       send(": connected\n\n");
-      for (const e of list(since)) {
+      for (const e of await list(since)) {
         lastSeq = Math.max(lastSeq, e.seq);
         sendEnv(e);
       }
@@ -61,6 +62,13 @@ export async function GET(req: Request) {
         } catch {
           /* already closed */
         }
+      };
+      // Serverless functions cap at maxDuration; close early so the client reconnects with its last seq.
+      const cap = process.env.VERCEL ? setTimeout(cleanup, 270_000) : null;
+      const baseCleanup = cleanup;
+      cleanup = () => {
+        if (cap) clearTimeout(cap);
+        baseCleanup();
       };
       req.signal.addEventListener("abort", cleanup);
       if (req.signal.aborted) cleanup();

@@ -1,6 +1,8 @@
 import { randomBytes } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { put } from "@vercel/blob";
+import { useBlob } from "@/server/store";
 import { json, preflight } from "@/server/cors";
 
 export const dynamic = "force-dynamic";
@@ -31,13 +33,17 @@ export async function POST(req: Request) {
   const base = path.basename(file.name, ext).replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 60) || "file";
   const safeExt = EXT_OK.has(ext) ? ext : "";
   const name = `${randomBytes(4).toString("hex")}-${base}${safeExt}`;
-  const url = await saveFile(name, Buffer.from(await file.arrayBuffer()));
+  const url = await saveFile(name, Buffer.from(await file.arrayBuffer()), file.type);
   return json({ url });
 }
 
-// The ONLY place that touches disk. Swap this body for Vercel Blob later;
-// it returns the final URL the client should use (basePath included for local files).
-async function saveFile(name: string, data: Buffer): Promise<string> {
+// The ONLY place that touches disk or Blob (Blob when CANVAS_STORE=blob; functions cap bodies at ~4.5MB,
+// bigger files use /api/upload/token + @vercel/blob/client). It returns the final URL the client should use (basePath included for local files).
+async function saveFile(name: string, data: Buffer, contentType: string): Promise<string> {
+  if (useBlob()) {
+    const r = await put(`uploads/${name}`, data, { access: "public", addRandomSuffix: false, contentType: contentType || undefined });
+    return r.url;
+  }
   const dir = path.join(process.cwd(), "public", "uploads");
   await mkdir(dir, { recursive: true });
   await writeFile(path.join(dir, name), data);

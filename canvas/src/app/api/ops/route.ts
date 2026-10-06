@@ -1,5 +1,5 @@
 import { OpSchema, type Op } from "@/lib/ops";
-import { append, opId } from "@/server/store";
+import { appendMany, opId } from "@/server/store";
 import { json, preflight } from "@/server/cors";
 
 export const dynamic = "force-dynamic";
@@ -24,12 +24,6 @@ export async function POST(req: Request) {
   });
   if (issues.length) return json({ ok: false, error: "invalid op(s)", issues }, 400);
 
-  const seqs: number[] = [];
-  const ids: (string | null)[] = [];
-  for (const op of ops) {
-    const env = append(op);
-    seqs.push(env.seq);
-    ids.push(opId(env.op));
-  }
-  return json({ ok: true, seqs, ids });
+  const envs = await appendMany(ops);
+  return json({ ok: true, seqs: envs.map((e) => e.seq), ids: envs.map((e) => opId(e.op)) });
 }
