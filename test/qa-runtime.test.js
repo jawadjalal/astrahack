@@ -157,3 +157,17 @@ test('a cancelled QA worker writes a terminal report before attempting browser s
     assert.ok(saved.finishedAt);
   } finally { await rm(output, { recursive: true, force: true }); }
 });
+
+
+test('transient provider failures retry twice and count every API attempt', async () => {
+  let calls = 0;
+  const budget = createRunBudget(async () => {
+    if (++calls < 3) throw Object.assign(new Error('Temporary server failure'), { status: 500 });
+    return { model: 'gpt-6-luna', usage: { input_tokens: 10, output_tokens: 2, total_tokens: 12 } };
+  });
+  await budget.request({ model: 'gpt-6-luna' });
+  assert.equal(budget.usage.requests, 3);
+  assert.equal(budget.usage.failedRequests, 2);
+  assert.equal(budget.usage.completedRequests, 1);
+  assert.equal(budget.usage.totalTokens, 12);
+});

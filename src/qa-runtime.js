@@ -38,7 +38,7 @@ export function createRunBudget(request, { maxRequests, maxDurationMs = 900000, 
       };
       for (const [name, value] of Object.entries(values)) { usage[name] += value; totals[name] += value; }
   };
-  const wrapped = async payload => {
+  const wrapped = async (payload, attempt = 0) => {
     check();
     usage.requests++;
     try {
@@ -50,6 +50,10 @@ export function createRunBudget(request, { maxRequests, maxDurationMs = 900000, 
       usage.failedRequests++;
       if (error.response) recordUsage(error.response, payload);
       if (combinedSignal.aborted) throw new RunLimitError('Run cancelled or time limit reached');
+      if (attempt < 2 && (error.status >= 500 && error.status <= 599 || error.status === 429 && error.code === 'rate_limit_exceeded')) {
+        await new Promise(resolve => setTimeout(resolve, 250 * (attempt + 1)));
+        return wrapped(payload, attempt + 1);
+      }
       throw error;
     }
   };
