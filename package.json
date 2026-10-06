@@ -29,6 +29,7 @@
     "ugc": "node --env-file-if-exists=.env bin/ugc.js",
     "leads": "node --env-file-if-exists=.env bin/leads.js",
     "worker": "node bin/web-worker.js",
+    "pretest": "node scripts/ensure-deps.mjs",
     "test": "node --test \"test/*.test.js\" \"test/*.test.mjs\" \"agent/test/*.test.mjs\" \"canvas/test/*.test.mjs\"",
     "test:canvas": "npm run mcp:test --prefix canvas",
     "test:all": "npm test && npm run test:canvas",
