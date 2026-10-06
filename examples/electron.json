@@ -1,0 +1,19 @@
+{
+  "name": "Electron app walkthrough",
+  "target": {
+    "type": "electron",
+    "cdpPort": 9222,
+    "pageMatch": "localhost"
+  },
+  "journeys": [
+    {
+      "name": "Home screen",
+      "video": true,
+      "steps": [
+        { "action": "observe" },
+        { "action": "click", "selector": "[data-testid='primary-action']", "settleMs": 500 },
+        { "action": "assertText", "text": "Success", "expected": "The primary action confirms success" }
+      ]
+    }
+  ]
+}
