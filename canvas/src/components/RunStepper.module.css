@@ -1,0 +1,91 @@
+/* The hand-drawn stepper. Strokes are wobbled by the shared #ig-rough-* filters (components/ui/RoughDefs.tsx);
+   labels and numbers stay crisp. Astra's cursor slides to the step she is on (transform/left only, under 500ms). */
+.stepper { position: relative; width: 100%; }
+.steps { position: relative; display: grid; grid-template-columns: repeat(var(--n), minmax(0, 1fr)); margin: 0; padding: 0; list-style: none; }
+
+.step { position: relative; display: flex; flex-direction: column; align-items: center; text-align: center; min-width: 0; padding: 0 4px; }
+
+.node {
+  position: relative; isolation: isolate; flex: none; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%;
+  font: 600 18px/1 var(--f-pixel); color: var(--ink);
+  transition: transform .3s var(--ease-pop);
+}
+.node::before {
+  content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; border-radius: inherit;
+  background: var(--bg, var(--paper-2)); border: 2.5px var(--bs, solid) var(--bd, var(--ink)); box-shadow: var(--sh, none);
+  filter: url(#ig-rough-a);
+  transition: background-color .3s var(--ease), box-shadow .3s var(--ease);
+}
+.step:nth-child(2) .node::before, .step:nth-child(5) .node::before { filter: url(#ig-rough-b); }
+.step:nth-child(3) .node::before { filter: url(#ig-rough-c); }
+.node b { font-weight: 600; }
+.node svg { filter: url(#ig-rough-sm); }
+
+.todo .node { --bg: var(--paper-2); --bd: var(--ink-3); --bs: dashed; color: var(--ink-3); }
+.active .node { --bg: var(--orange); --sh: 0 3px 0 var(--ink); transform: translateY(-2px); }
+.done .node { --bg: var(--butter); animation: node-pop .36s var(--ease-pop); }
+.failed .node { --bg: var(--tomato); --sh: 0 3px 0 var(--ink); color: #fff; }
+.active .node::after {
+  content: ""; position: absolute; inset: -6px; border-radius: 50%; border: 2.5px solid var(--orange); opacity: 0; pointer-events: none;
+  animation: ring 1.9s var(--ease-out) infinite;
+}
+@keyframes ring { 0% { transform: scale(.82); opacity: .75; } 70%, 100% { transform: scale(1.18); opacity: 0; } }
+@keyframes node-pop { 0% { transform: scale(.82); } 60% { transform: scale(1.1); } 100% { transform: scale(1); } }
+
+.label {
+  margin-top: 16px; max-width: 9.5em; font: 500 16px/1.2 var(--f-pixel); letter-spacing: .01em; color: var(--ink-2); text-wrap: balance;
+  transition: color .25s var(--ease);
+}
+.todo .label { color: var(--ink-3); }
+.active .label, .failed .label { color: var(--ink); }
+.failed .label { color: var(--orange-deep); }
+
+/* connector between two nodes: a pencil squiggle that the ink line draws over once the step is done */
+.seg {
+  position: absolute; top: 15px; left: calc(50% + 31px); width: calc(100% - 62px); height: 14px; pointer-events: none;
+  background: var(--squig-h) repeat-x center / 44px 6px;
+}
+.seg b {
+  position: absolute; inset: 0; transform: scaleX(0); transform-origin: left center;
+  background: linear-gradient(transparent 5.5px, var(--ink) 5.5px, var(--ink) 8.5px, transparent 8.5px);
+  filter: url(#ig-rough-c);
+  transition: transform .45s var(--ease);
+}
+.done .seg b { transform: scaleX(1); }
+
+/* Astra's cursor */
+.cursor {
+  position: absolute; z-index: 2; left: calc((var(--i) + .5) * 100% / var(--n) + 16px); top: 39px; pointer-events: none;
+  transition: left .45s var(--ease-pop), top .45s var(--ease-pop);
+}
+.cursor :global(.ig-agent-bob) { display: block; }
+
+.sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+
+@media (max-width: 600px) {
+  .steps { display: flex; flex-direction: column; }
+  .step { flex-direction: row; align-items: center; justify-content: flex-start; gap: 16px; height: 64px; padding: 0; text-align: left; }
+  .node { width: 40px; height: 40px; font-size: 16px; }
+  .label { margin-top: 0; max-width: none; font-size: 17px; text-wrap: wrap; }
+  .seg {
+    top: calc(50% + 21px); left: 13px; width: 14px; height: 26px;
+    background: var(--squig-v) repeat-y center / 6px 44px;
+  }
+  .seg b { transform: scaleY(0); transform-origin: top center; background: linear-gradient(90deg, transparent 5.5px, var(--ink) 5.5px, var(--ink) 8.5px, transparent 8.5px); }
+  .done .seg b { transform: scaleY(1); }
+  .cursor { left: 34px; top: calc(var(--i) * 64px + 44px); }
+}
+
+/* the docked version */
+.mini { display: inline-flex; align-items: center; gap: 5px; }
+.mini i { width: 10px; height: 10px; border-radius: 50%; border: 2px dashed var(--ink-3); background: var(--paper-2); transition: background-color .25s var(--ease); }
+.mini .miniDone { border: 2px solid var(--ink); background: var(--butter); }
+.mini .miniActive { border: 2px solid var(--ink); background: var(--orange); animation: dot-beat 1.4s ease-in-out infinite; }
+.mini .miniFailed { border: 2px solid var(--ink); background: var(--tomato); }
+@keyframes dot-beat { 50% { box-shadow: 0 0 0 4px rgba(255, 106, 31, .28); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .node, .node::before, .label, .seg b, .cursor { transition: none; }
+  .done .node, .active .node::after, .mini .miniActive { animation: none; }
+  .active .node::after { display: none; }
+}

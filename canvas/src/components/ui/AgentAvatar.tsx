@@ -6,9 +6,9 @@ import { agentBus, type AgentCursor } from "../../lib/agentBus";
 import { withBase } from "../../lib/base";
 
 // Ignura's cursor dart (site-v3 CursorShape.astro), drawn small: ink outline, flat orange, a white glint.
-const BODY =
+export const DART_BODY =
   "M5.67 4.02C11.60 5.88 17.17 8.50 22.38 11.90Q26 13.60 22.28 15.07C20.97 15.59 19.66 16.11 18.35 16.63Q16.40 17.40 15.70 19.38C15.20 20.79 14.70 22.20 14.20 23.61Q13 27 11.68 23.65C8.59 17.77 6.16 11.63 4.38 5.23Q3.50 3 5.67 4.02Z";
-const SHADE =
+export const DART_SHADE =
   "M4.26 3.81Q3.94 4.12 4.38 5.23C6.16 11.63 8.59 17.77 11.68 23.65Q13 27 14.20 23.61C14.70 22.20 15.20 20.79 15.70 19.38Q16.05 18.39 16.71 17.70Z";
 
 const ease = (t: number) => 1 - Math.pow(1 - t, 3);
@@ -139,11 +139,11 @@ export function AgentAvatar({ editor }: { editor: Editor }) {
       <div className="ig-agent" ref={root} aria-hidden>
         <div className="ig-agent-bob">
           <svg className="ig-agent-dart" viewBox="3.37 2.86 30 30" width={24} height={24}>
-            <path d={BODY} fill="none" stroke="#FFFDF9" strokeWidth={4.4} strokeLinejoin="round" />
-            <path d={BODY} fill="#FF6A1F" />
-            <path d={SHADE} fill="#E2500E" />
+            <path d={DART_BODY} fill="none" stroke="#FFFDF9" strokeWidth={4.4} strokeLinejoin="round" />
+            <path d={DART_BODY} fill="#FF6A1F" />
+            <path d={DART_SHADE} fill="#E2500E" />
             <path d="M7.05 8.50L10.15 9.95" stroke="#fff" strokeWidth={2} strokeLinecap="round" fill="none" />
-            <path d={BODY} fill="none" stroke="#161616" strokeWidth={2.8} strokeLinejoin="round" />
+            <path d={DART_BODY} fill="none" stroke="#161616" strokeWidth={2.8} strokeLinejoin="round" />
           </svg>
           <div className={`ig-agent-pill ${blurb?.speech ? "is-speech" : ""}`}>
             <img src={withBase("/ignura/astra/astra-mark.svg")} width={14} height={14} alt="" draggable={false} />

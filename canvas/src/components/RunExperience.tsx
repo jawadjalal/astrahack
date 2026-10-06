@@ -1,21 +1,47 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { withBase } from "../lib/base";
 import type { Run } from "../lib/runs";
+import RunStepper, { LAST_STEP, MiniSteps, RUN_STEPS, stepIndex } from "./RunStepper";
+import { RoughDefs } from "./ui/RoughDefs";
 import styles from "./RunExperience.module.css";
 
 const Canvas = dynamic(() => import("./Canvas"), { ssr: false });
 
 const terminal = new Set(["completed", "partial", "failed"]);
 const labels: Record<Run["status"], string> = {
-  queued: "Waiting for a worker",
+  queued: "Getting ready",
   running: "Exploring your product",
-  completed: "Run complete",
-  partial: "Run finished with gaps",
-  failed: "Run could not finish",
+  completed: "All done",
+  partial: "Done, with a few gaps",
+  failed: "Couldn’t finish",
 };
+
+/** The run's evidence is reaching the whiteboard once it is publishing, or when it ended with something to show. */
+const evidenceIsLive = (run: Run | null) =>
+  !!run && (run.status === "completed" || run.status === "partial" || run.stage.startsWith("publishing"));
+
+/** Astra's line for the big progress screen: [before, emphasised, after]. */
+function headline(run: Run | null, unavailable: boolean): [string, string, string] {
+  if (unavailable) return ["Astra lost track of this ", "run", ""];
+  if (!run) return ["Finding your ", "run", "…"];
+  if (run.status === "failed") return ["Astra couldn’t finish this ", "run", ""];
+  switch (run.stage) {
+    case "exploring": return ["Astra is ", "using", " your product"];
+    case "analyzing":
+    case "capturing":
+    case "generating_kit":
+    case "generating_ads":
+    case "generating_campaigns":
+    case "generating_ugc": return ["Astra is ", "writing up", " what she found"];
+    case "publishing":
+    case "publishing_features":
+    case "publishing_kit": return ["Astra is pinning it to the ", "board", ""];
+    default: return ["Astra is getting ", "ready", ""];
+  }
+}
 
 function updateLocation(runId?: string, canvas = false) {
   const url = new URL(window.location.href);
@@ -26,6 +52,8 @@ function updateLocation(runId?: string, canvas = false) {
   window.history.replaceState(null, "", url);
 }
 
+const prefersReducedMotion = () => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+
 export default function RunExperience({ initialRunId = null, initialCanvas = false }: { initialRunId?: string | null; initialCanvas?: boolean }) {
   const [targetUrl, setTargetUrl] = useState("");
   const [run, setRun] = useState<Run | null>(null);
@@ -35,6 +63,14 @@ export default function RunExperience({ initialRunId = null, initialCanvas = fal
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [statusError, setStatusError] = useState("");
+  /** furthest step seen, so a failed run (whose stage reads "finished") can show where it stopped */
+  const [reached, setReached] = useState(0);
+  /** the visitor chose to look at the whiteboard before evidence arrived */
+  const [peeked, setPeeked] = useState(false);
+  /** the progress screen has finished fading out and is gone */
+  const [stageGone, setStageGone] = useState(false);
+  const fieldRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!runId) return;
@@ -53,6 +89,7 @@ export default function RunExperience({ initialRunId = null, initialCanvas = fal
         }
         if (!controller.signal.aborted) {
           setRun(data.run);
+          setReached((current) => Math.max(current, Math.min(stepIndex(data.run), LAST_STEP)));
           setStatusError("");
         }
         finished = terminal.has(data.run.status);
@@ -66,6 +103,26 @@ export default function RunExperience({ initialRunId = null, initialCanvas = fal
     return () => { controller.abort(); clearTimeout(timer); };
   }, [runId]);
 
+  // Hand-off: once evidence starts landing (or the visitor peeks), the progress screen fades out over the board.
+  const handedOff = peeked || evidenceIsLive(run);
+  useEffect(() => {
+    if (!handedOff) return;
+    const timer = setTimeout(() => setStageGone(true), prefersReducedMotion() ? 0 : 480);
+    return () => clearTimeout(timer);
+  }, [handedOff]);
+
+  const fail = (message: string, refocus = false) => {
+    setError(message);
+    if (refocus) inputRef.current?.focus();
+    if (!prefersReducedMotion()) {
+      fieldRef.current?.animate(
+        [{ transform: "translateX(0)" }, { transform: "translateX(-8px) rotate(-.4deg)" }, { transform: "translateX(7px) rotate(.3deg)" },
+          { transform: "translateX(-4px)" }, { transform: "translateX(0)" }],
+        { duration: 380, easing: "ease-out" },
+      );
+    }
+  };
+
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (submitting) return;
@@ -76,7 +133,7 @@ export default function RunExperience({ initialRunId = null, initialCanvas = fal
       url = new URL(trimmed.includes("://") ? trimmed : `https://${trimmed}`);
       if (!trimmed || !["http:", "https:"].includes(url.protocol)) throw new Error();
     } catch {
-      setError("Enter a valid website or web app URL.");
+      fail("That doesn’t look like a web address. Try something like https://your-product.com.", true);
       return;
     }
     setSubmitting(true);
@@ -89,13 +146,16 @@ export default function RunExperience({ initialRunId = null, initialCanvas = fal
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Could not start the run. Please try again.");
       setRun(data.run);
+      setReached(Math.min(stepIndex(data.run), LAST_STEP));
+      setPeeked(false);
+      setStageGone(false);
       setRunId(data.run.id);
       setStatusError("");
       setShowCanvas(true);
       setShowForm(false);
       updateLocation(data.run.id);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Could not start the run. Please try again.");
+      fail(cause instanceof Error ? cause.message : "Could not start the run. Please try again.");
     } finally {
       setSubmitting(false);
     }
@@ -107,44 +167,115 @@ export default function RunExperience({ initialRunId = null, initialCanvas = fal
     updateLocation(runId || undefined, true);
   };
 
+  const newRun = () => { setError(""); setShowForm(true); };
+
+  // ---- derived view state ----
+  const unavailable = !run && !!statusError;
+  const stageVisible = !showForm && !!runId && !stageGone;
+  const dockVisible = !showForm && (!runId || handedOff);
+  const failed = run?.status === "failed";
+  const current = run ? (failed ? Math.max(reached, 1) : stepIndex(run)) : 0;
+  const mood = error ? "oops" : submitting ? "busy" : targetUrl.trim() ? "typing" : "idle";
+  const bubble = error ? "Hmm, that didn’t go through. Mind checking?" : submitting ? "On it. One moment…" : "Paste your site and I’ll use it like a customer.";
+  const [before, em, after] = headline(run, unavailable);
+  const message = run ? run.message || (run.status === "queued" ? "Your URL is queued. Exploration starts when a worker picks it up." : labels[run.status]) : "";
+
   return (
     <>
+      <RoughDefs />
       {showCanvas && <Canvas />}
-      {showForm ? (
-        <main className={`${styles.launcher} ${showCanvas ? styles.overlay : ""}`}>
+
+      {showForm && (
+        <main className={`${styles.stage} ${styles.paper} ${showCanvas ? styles.overlay : ""}`}>
+          <p className={`ig-brand ${styles.brand}`}>
+            <img src={withBase("/ignura/astra/astra-mark.svg")} width={26} height={26} alt="" draggable={false} />
+            <span>Astra</span>
+          </p>
           <section className={styles.formPanel} aria-labelledby="url-question">
-            <p className={styles.brand}>AstraHack</p>
-            <h1 id="url-question">What’s the URL of your website or app?</h1>
-            <p className={styles.description}>We’ll explore its key flows, capture screenshots, and create ad concepts, X and Reddit campaign drafts, and UGC plans on your canvas.</p>
-            <form onSubmit={submit}>
+            <h1 id="url-question" className={styles.title}>
+              What’s the URL of your <em>website or app<img className={styles.swoosh} src={withBase("/ignura/doodles/underline-swoosh.svg")} alt="" draggable={false} /></em>?
+            </h1>
+            <p className={styles.description}>Astra will click around like a customer, take screenshots, and make ad ideas, X and Reddit drafts and UGC plans for your whiteboard.</p>
+            <form className={styles.form} onSubmit={submit} aria-busy={submitting}>
+              <div className={styles.astra} data-mood={mood} aria-hidden>
+                <img className={styles.astraArt} src={withBase("/ignura/astra/astra.svg")} width={124} alt="" draggable={false} />
+                {mood === "oops" && <img className={styles.oops} src={withBase("/ignura/doodles/exclaim.svg")} width={16} alt="" draggable={false} />}
+              </div>
+              <p className={styles.bubble} aria-hidden>{bubble}</p>
               <label className={styles.label} htmlFor="target-url">Website or web app URL</label>
               <div className={styles.fields}>
-                <input id="target-url" name="url" type="text" inputMode="url" autoComplete="url"
-                  autoCapitalize="none" spellCheck={false} required placeholder="https://your-product.com"
-                  value={targetUrl} onChange={(event) => setTargetUrl(event.target.value)}
-                  aria-invalid={!!error} aria-describedby={error ? "url-error url-help" : "url-help"}
-                  disabled={submitting} autoFocus />
-                <button type="submit" disabled={submitting}>{submitting ? "Starting…" : "Explore product"}</button>
+                <div className={`${styles.field} ${error ? styles.invalid : ""}`} ref={fieldRef}>
+                  <svg className={styles.globe} viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden focusable="false">
+                    <path d="M12 3.2c4.9.1 8.7 3.9 8.7 8.8s-3.8 8.7-8.7 8.8C7.1 20.7 3.3 17 3.3 12S7.1 3.3 12 3.2z" />
+                    <path d="M3.6 9.6c2.7.9 5.6 1.2 8.4 1.1 2.8 0 5.6-.4 8.3-1.2M3.7 14.6c2.7-.9 5.5-1.2 8.3-1.1 2.8 0 5.6.4 8.2 1.2" />
+                    <path d="M12 3.4c-2.3 2.4-3.4 5.2-3.4 8.6s1.1 6.2 3.4 8.5c2.3-2.3 3.4-5.1 3.4-8.5S14.3 5.8 12 3.4z" />
+                  </svg>
+                  <input id="target-url" name="url" type="text" inputMode="url" autoComplete="url" ref={inputRef}
+                    autoCapitalize="none" spellCheck={false} required placeholder="https://your-product.com"
+                    value={targetUrl} onChange={(event) => setTargetUrl(event.target.value)}
+                    aria-invalid={!!error} aria-describedby={error ? "url-error url-help" : "url-help"}
+                    disabled={submitting} autoFocus />
+                </div>
+                <button type="submit" className={`ig-btn ${styles.cta}`} disabled={submitting}>
+                  <span>{submitting ? "Starting…" : "Send Astra in"}</span>
+                  {!submitting && <i className={styles.arrow} aria-hidden />}
+                </button>
               </div>
-              <p id="url-help" className={styles.help}>Use a publicly accessible URL. The current web flow explores websites and browser apps.</p>
+              <p id="url-help" className={styles.help}>Needs a public link. For now Astra works on websites and browser apps.</p>
               {error && <p id="url-error" role="alert" className={styles.error}>{error}</p>}
             </form>
+            <ol className={styles.how} aria-label="What happens next">
+              <li>Opens your site</li>
+              <li>Uses it like a customer</li>
+              <li>Pins findings and launch ideas</li>
+            </ol>
             <button type="button" className={styles.textButton} onClick={viewCanvas} disabled={submitting}>
-              {runId ? "Back to run" : "View canvas"}
+              {runId ? "Back to my run" : "Peek at the whiteboard"}
             </button>
           </section>
         </main>
-      ) : (
-        <aside className={styles.runPanel} aria-label="Product exploration">
-          <div className={styles.runHeading}>
-            <strong>{run ? labels[run.status] : statusError ? "Run unavailable" : runId ? "Loading run…" : "AstraHack"}</strong>
-            <button type="button" className={styles.textButton} onClick={() => { setError(""); setShowForm(true); }}>New run</button>
+      )}
+
+      {stageVisible && (
+        <main className={`${styles.stage} ${styles.paper} ${styles.overlay} ${handedOff ? styles.leaving : ""}`} aria-hidden={handedOff || undefined}>
+          <p className={`ig-brand ${styles.brand}`}>
+            <img src={withBase("/ignura/astra/astra-mark.svg")} width={26} height={26} alt="" draggable={false} />
+            <span>Astra</span>
+          </p>
+          <section className={styles.runPanelBig} aria-labelledby="run-title">
+            <div className={styles.astraBig} data-mood={failed || unavailable ? "oops" : "busy"} aria-hidden>
+              <img className={styles.astraArt} src={withBase("/ignura/astra/astra.svg")} width={132} alt="" draggable={false} />
+            </div>
+            <h1 id="run-title" className={styles.title}>{before}<em>{em}<img className={styles.swoosh} src={withBase("/ignura/doodles/underline-swoosh.svg")} alt="" draggable={false} /></em>{after}</h1>
+            {run && (
+              <a className={styles.target} href={run.url} target="_blank" rel="noreferrer">
+                <span>{run.url}</span>
+              </a>
+            )}
+            {run && <div className={styles.stepWrap}><RunStepper current={current} failed={failed} /></div>}
+            {run && <p role="status" className={styles.note}><span key={message}>{message}</span></p>}
+            {statusError && <p role="alert" className={styles.error}>{statusError}</p>}
+            <div className={styles.actions}>
+              {(failed || unavailable) ? (
+                <button type="button" className={`ig-btn ${styles.cta}`} onClick={newRun}><span>Try another URL</span></button>
+              ) : null}
+              <button type="button" className={styles.textButton} onClick={() => setPeeked(true)}>Peek at the whiteboard</button>
+            </div>
+          </section>
+        </main>
+      )}
+
+      {dockVisible && (
+        <aside className={`ig-pop ${styles.dock}`} aria-label="Product exploration">
+          <img className={styles.dockMark} src={withBase("/ignura/astra/astra-mark.svg")} width={34} height={34} alt="" draggable={false} />
+          <div className={styles.dockBody}>
+            <strong>{run ? (run.status === "running" ? RUN_STEPS[Math.min(current, LAST_STEP)].label : labels[run.status]) : statusError ? "Run unavailable" : runId ? "Loading run…" : "Astra"}</strong>
+            {run && <a className={styles.dockTarget} href={run.url} target="_blank" rel="noreferrer">{run.url}</a>}
           </div>
-          {run && <>
-            <a className={styles.target} href={run.url} target="_blank" rel="noreferrer">{run.url}</a>
-            <p role="status">{run.message || (run.status === "queued" ? "Your URL is queued. Exploration starts when a worker picks it up." : labels[run.status])}</p>
-          </>}
-          {statusError && <p role="alert" className={styles.error}>{statusError}</p>}
+          {run && <span className={styles.dockMini}><MiniSteps current={current} failed={failed} /></span>}
+          <button type="button" className="ig-btn ig-btn-small ig-btn-ghost" onClick={newRun}><span>New run</span></button>
+          {run && <p role="status" className={styles.dockNote}>{message}</p>}
+          {statusError && <p role="alert" className={`${styles.error} ${styles.dockNote}`}>{statusError}</p>}
         </aside>
       )}
     </>
