@@ -47,6 +47,8 @@ Options: `srcMap` / `srcFor` (bundle path to hosted URL; unmapped paths pass thr
 | `journeys[].video` or a top-level video asset | `add_video` at the end of its row |
 | everything | final `focus` over all created ids |
 
+Only **functional** findings become cards: observable broken behavior with reproduction steps, expected vs actual and evidence (definition in [QA_ANALYSIS.md](QA_ANALYSIS.md#what-counts-as-a-finding)). `runToOps` runs every finding through `src/lib/findings-filter.mjs` first. Design or taste opinions (category `usability`/`visual`, or wording such as color, font, spacing, looks, prefer, consider) and findings missing steps, expected/actual or evidence are dropped, and `push-run.mjs` prints what was left out on stderr (`opts.onExcluded` in code). A scripted runner finding keeps its own category. With `--include-design` (`opts.includeDesign`) design findings are kept at severity `info` with a `[usability]` or `[visual]` title prefix; the op has no category field.
+
 Finding fields:
 
 - **Step**: runner `evidence` path or `evidenceStep`; analysis `evidenceRefs` entries like `Q003` (action 3). Crawler refs (`C001`, `CF001`) have no step image, so those findings go in a "Findings without a screenshot" row at the bottom.

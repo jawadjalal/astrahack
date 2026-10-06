@@ -66,7 +66,7 @@ The OpenAI Responses API only accepts remote MCP servers over HTTP (`{"type":"mc
 | `canvas_add_shape` | `rectangle`, `ellipse`, `line`, `text`, `note` with optional text/color/size. |
 | `canvas_add_arrow` | Arrow between two existing element ids, optional label/color. |
 | `canvas_annotate` | Highlight box on a screenshot/video. Box is fractions (0..1) of the target: `x=px_x/W, y=px_y/H, w=px_w/W, h=px_h/H`. Severity colors it. |
-| `canvas_add_finding` | Finding card: title, severity, expected/actual, verified, target id, video timestamp. |
+| `canvas_add_finding` | Finding card: title, severity, expected/actual, verified, target id, video timestamp. Functional bugs only (observable broken behavior with repro steps in `actual`); never design or taste opinions. |
 | `canvas_move` / `canvas_update` / `canvas_delete` | Edit an element by id. |
 | `canvas_focus` | Pan/zoom the human's viewport to `ids` or a pixel `box`. |
 | `canvas_cursor` | Glide your avatar (orange Ignura cursor + name tag) to canvas `x,y`; optional `label` sets the tag. Add/edit tools already move it for you; use this to point at something you have not changed. |
@@ -130,7 +130,7 @@ Notes:
 3. canvas_add_screenshot {path_or_url:"/tmp/shots/03-cart.png",  x:1100, y:0, w:390, label:"Cart",     step:3, id:"cart"}
 4. canvas_layout_flow    {ids:["login","home","cart"], gap:160, arrow_labels:["tap Sign in","tap Cart"]}
 5. canvas_annotate       {target:"cart", box:{x:0.08,y:0.86,w:0.84,h:0.07}, label:"Checkout CTA below fold", severity:"high"}
-6. canvas_add_finding    {x:1100, y:1000, title:"Checkout CTA clipped on small screens", severity:"high", expected:"CTA visible without scrolling", actual:"CTA cut off by tab bar", target:"cart", verified:true}
+6. canvas_add_finding    {x:1100, y:1000, title:"Place order button does nothing", severity:"high", expected:"Tapping Place order opens the confirmation page", actual:"No response after three taps; same screen, no error. Repro: add an item, open Cart, tap Place order", target:"cart", verified:true}
 7. canvas_add_arrow      {from:"finding-xxxx", to:"cart", label:"see"}   // use the id returned in step 6
 8. canvas_get_state      {}                                              // check layout, find free space
 9. canvas_say            {text:"Cart CTA is the weak spot", target:"cart"}

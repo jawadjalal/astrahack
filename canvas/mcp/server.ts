@@ -332,10 +332,10 @@ server.registerTool("canvas_annotate", {
 
 server.registerTool("canvas_add_finding", {
   description:
-    "Add a finding card (a structured bug/UX issue) to the canvas: title, severity, expected vs actual, and whether it was verified by reproducing it. Optionally link it to the screenshot/video (target) and the video timestamp in seconds. Place the card near its screenshot (e.g. to its right or below) and follow with canvas_add_arrow from the card to the target if layout is not obvious. Returns the card id.",
+    "Add a finding card for a FUNCTIONAL bug to the canvas: observable broken behavior (a flow that cannot be completed, an action with no or the wrong effect, an error or blank screen, wrong or inconsistent data, bad validation, a dead link, lost state). Never use it for design, copy or taste opinions. Give title, severity, expected vs actual (put the exact repro steps in actual), and whether it was verified by reproducing it. Optionally link it to the screenshot/video (target) and the video timestamp in seconds. Place the card near its screenshot (e.g. to its right or below) and follow with canvas_add_arrow from the card to the target if layout is not obvious. Returns the card id.",
   inputSchema: {
     x: z.number(), y: z.number(),
-    title: z.string().describe("One-line summary, e.g. 'Checkout button unresponsive on second tap'."),
+    title: z.string().describe("One-line summary of the broken behavior, e.g. 'Checkout button unresponsive on second tap'."),
     severity: SEVERITY,
     expected: z.string().optional(), actual: z.string().optional(),
     verified: z.boolean().optional().describe("true only if you reproduced it. Default false."),

@@ -7,7 +7,7 @@ AstraHack is an early-stage system of agents that explores a startup's website o
 Given access to a website or app and a short brief, the agents should be able to:
 
 1. **Explore and understand the product.** Use computer control to navigate the real website or app, try important user journeys, and build a grounded picture of what the product does and who it is for.
-2. **Run practical QA.** Identify broken flows, confusing interactions, and other observable problems. Record the steps taken, expected and actual behavior, and supporting screenshots or video.
+2. **Run practical QA.** Identify broken flows and other observable functional problems (see [What counts as a finding](#what-counts-as-a-finding)). Record the steps taken, expected and actual behavior, and supporting screenshots or video.
 3. **Capture product assets.** Take screenshots and short screen recordings of meaningful features and flows that can be used in reports and promotional work.
 4. **Create ad concepts and images.** Use the observed product experience and captured assets to propose messages and generate images for advertisements.
 5. **Plan UGC campaigns.** Suggest creator angles, hooks, example scripts, and a campaign plan grounded in the product's actual features and audience.
@@ -29,6 +29,15 @@ The computer-use agent is the source of observed product knowledge for QA and pr
 ## MVP success criteria
 
 For one supported website or app, a run should complete a small set of important user journeys and produce evidence that another person can review: what the agent did, what it saw, where it got stuck, and what it learned. The QA findings should be reproducible, and the promotional outputs should refer to features the agent actually found in the product.
+
+## What counts as a finding
+
+The board flags **functional** issues only: observable broken behavior, never design opinions.
+
+- **Reported:** a flow that cannot be completed; an action with no effect or the wrong effect; an error, crash, blank or stuck state; wrong or inconsistent data (a counter, balance or total that does not update or contradicts another number); validation that blocks valid input or accepts invalid input; dead links, 404s, redirect loops; broken navigation, back or refresh (state lost); console errors or failed network requests (4xx/5xx) tied to a user action; accessibility blockers that stop task completion (unreachable control, focus trap); slowness only when it blocks the task (timeout, endless spinner).
+- **Not reported:** colors, spacing, typography, "could be clearer" copy, taste, layout preferences, missing polish, marketing suggestions.
+
+Every finding has a `category` (`functional`, `usability`, `visual`), reproducible steps, expected vs actual, and evidence; one without them is discarded. The runner, crawler, QA agent, fleet, QA analysis, teardown agent and canvas converter all use the same filter (`src/findings-filter.js`). Pass `--include-design` to also keep `usability` and `visual` observations, always at severity `info`. Details and the per-producer list are in [docs/QA_ANALYSIS.md](docs/QA_ANALYSIS.md).
 
 ## Computer-use runner: first vertical slice
 
@@ -80,7 +89,7 @@ Each `journeys[]` entry has a `name`, optional `video`, and ordered `steps`. Sup
 | `wait` | `ms` | Pause up to 30 seconds. |
 | `observe` | none | Capture the current screen and page summary. |
 
-Any step may include `settleMs`, `expected`, `failureSummary`, and `severity`. A failing step stops that journey, captures evidence, and creates a QA finding. The next journey runs in the same session. Journey authors should add an initial `goto` when a flow needs a clean starting page.
+Any step may include `settleMs`, `expected`, `failureSummary`, `severity`, and `category`. A failing step stops that journey, captures evidence, and creates a functional QA finding (a step labeled `usability` or `visual` is listed in `excludedFindings` unless the run uses `--include-design`). The next journey runs in the same session. Journey authors should add an initial `goto` when a flow needs a clean starting page.
 
 ### Evidence and handoff
 
@@ -88,7 +97,7 @@ Every run writes `report.json`, `screenshots/*.png`, and optional `video/*.webm`
 
 - `product`: observed URL, title, description, headings, visible controls, and a short excerpt of page text.
 - `journeys`: every action, outcome, timestamp, page observation, and screenshot path.
-- `findings`: failed assertions/actions with expected and actual behavior, reproduction steps, severity, and evidence path.
+- `findings`: failed assertions/actions with `category: "functional"`, expected and actual behavior, reproduction steps, severity, and evidence path and step. `excludedFindings` lists anything left out and why.
 - `assets`: screenshot and video manifest for downstream marketing agents.
 
 The report records observed facts only. Downstream agents should treat marketing claims and audience assumptions as proposals until verified. `fill` values are redacted in the JSON, but screenshots and video can show sensitive content; use test accounts and review evidence before sharing it. Runs are ignored by Git.

@@ -4,7 +4,7 @@ What we show: a computer-use agent uses a client's product like a user, writes d
 
 What we claim, and nothing more:
 
-- The agent drives a real browser (Chrome through CDP, or the Astra computer-use agent), records each step with screenshots and optional video, and reports findings with expected vs actual and reproduction steps.
+- The agent drives a real browser (Chrome through CDP, or the Astra computer-use agent), records each step with screenshots and optional video, and reports findings with expected vs actual and reproduction steps. Findings are functional only: observable broken behavior (a button that does nothing, a counter that does not update, an error), never colors, spacing or copy opinions. See [QA_ANALYSIS.md](QA_ANALYSIS.md).
 - Findings are marked verified or unverified. Observed facts stay separate from the agent's guesses.
 - The canvas shows the run live (screens left to right, arrows, highlight boxes, finding cards, the recording). Any MCP-capable agent can draw on it. Humans can drag in files, move things and switch to Present mode for a read-only client view.
 - We do not claim: it fixes the bugs, it covers native iOS or Android apps (web and Electron renderers only today), or that it finds everything. Coverage gaps are reported, not hidden.
@@ -18,7 +18,7 @@ What we claim, and nothing more:
 | Needs | Chrome, API key, permissions, a test account | Only the canvas |
 | Say out loud | nothing special | "This board is a prepared sample run." Do not call it live. |
 
-The seeded board has 6 mock screens (onboarding, sign up, paywall, home, settings, empty garden), 5 highlight boxes, 6 ranked findings (4 verified, 2 unverified), a run-recording slot, a legend and a fix-first list. It is fictional data. The video is a 5-second stand-in clip, so the finding timestamps run 0:01 to 0:05. Say so if asked.
+The seeded board has 6 mock screens (onboarding, sign up, paywall, home, settings, empty garden), 6 highlight boxes, 6 ranked findings (4 verified, 2 unverified), all functional: the paywall close button is unresponsive, the first tap on Create account is ignored, the reminder count does not update after watering, the reminder time reverts to 8:00 AM, the Home badge disagrees with the list, and Add (+) on an empty garden does nothing. The content lives in `canvas/scripts/demo-findings.mjs` and the seed refuses to post a finding the filter would drop (`--dry-run` prints the ops without posting). The board also has a run-recording slot, a legend and a fix-first list. It is fictional data. The video is a 5-second stand-in clip, so the finding timestamps run 0:01 to 0:05. Say so if asked.
 
 ### Seed commands
 
@@ -54,7 +54,7 @@ Layout: canvas full screen on the projector, Follow on, board empty, one hidden 
 | 0:00 | Hook | "Every launch agency has this meeting. You say the onboarding leaks. The client says: show me." | Empty board. Press Enter in the hidden terminal to start the replay as you finish the sentence. |
 | 0:08 | Observe | "So an agent uses the app like a customer. Every box is a real screenshot, in order." | Camera follows. Point at the arrows and step badges as they draw in. |
 | 0:25 | Reproduce | "When something breaks it tries again. Verified means it happened twice. Unverified means it only saw it once, and says so." | Point at a Verified card, then an Unverified one. |
-| 0:40 | Explain | "Each finding sits on a box over the exact spot." | Click the red box on the paywall close button. |
+| 0:40 | Explain | "Each finding sits on a box over the exact spot, and every one is something that is broken, not a matter of taste." | Click the red box on the paywall close button. |
 | 0:47 | Human in the loop | "And I can add my own evidence." | Drag a screenshot from the desktop onto the board. It uploads and appears. |
 | 0:53 | Present | "That's the client view." | Click Present. |
 | 0:57 | Close | "Ignura: a teardown first, then we fix the top of the list and launch it. Find us after." | Hold on the board. |
