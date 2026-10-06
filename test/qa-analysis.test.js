@@ -147,10 +147,10 @@ test('model hypothesis citing an existing crawler finding is not duplicated', as
   const dir = await mkdtemp(join(tmpdir(), 'astrahack-dedupe-analysis-'));
   try {
     await writeFile(join(dir, 'crawl.json'), JSON.stringify({ target: 'https://example.test/', pages: [], findings: [
-      { type: 'missing_h1', severity: 'low', url: 'https://example.test/work', actual: 'No visible H1 heading' }
+      { type: 'http_error', severity: 'high', url: 'https://example.test/work', actual: 'HTTP 500' }
     ] }));
     const request = async () => ({ output: [{ type: 'message', content: [{ type: 'output_text', text: JSON.stringify({
-      productSummary: '', observedFeatures: [], candidateFindings: [{ summary: 'Work page lacks an H1', severity: 'low', expected: 'H1', actual: 'No H1 detected', reproduction: ['Open work'], evidenceRefs: ['CF001'], uncertainty: 'Review DOM' }], limitations: []
+      productSummary: '', observedFeatures: [], candidateFindings: [{ summary: 'Work page fails to load', category: 'functional', severity: 'high', expected: 'Page loads', actual: 'HTTP 500', reproduction: ['Open work'], evidenceRefs: ['CF001'], uncertainty: 'Recheck server response' }], limitations: []
     }) }] }] });
     const { report } = await analyzeQa(dir, { request, includeImages: false });
     assert.equal(report.findings.length, 1);
