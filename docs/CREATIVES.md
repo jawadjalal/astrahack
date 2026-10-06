@@ -40,3 +40,7 @@ npm test
 Six tests cover five-image generation requests, dry runs, missing keys, partial failure, invalid/non-square responses, and empty prompts. Tests use a mocked provider; real API access and image quality remain unverified until a key is supplied.
 
 [Product scope](PRODUCT.md) · [Workflow](WORKFLOW.md) · [Code integration](INTEGRATION.md) · [Decisions](QUESTIONS.md)
+
+## Nano Banana (default)
+
+Set `GEMINI_API_KEY` in your local `.env`, then run `npm run generate -- --prompt-file brief.txt`. Generates five distinct 1024×1024 PNGs using Google Nano Banana. Obtain the key from https://aistudio.google.com/api-keys; image generation requires model access and available quota. Use `--dry-run` without a key. To switch later, set `OPENAI_API_KEY` and pass `--provider openai`. Override the model with `--model`. Keys are never stored in output manifests.

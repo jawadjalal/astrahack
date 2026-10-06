@@ -140,3 +140,7 @@ npm run generate -- --prompt "Your product facts and ad brief" --dry-run
 Images and a status manifest go into a unique folder under `artifacts/`. The computer-use runner above is preserved; its findings can inform the supplied prompt. See [creative generator usage](docs/CREATIVES.md) and [code integration](docs/INTEGRATION.md).
 
 The docs in `docs/` describe the creative slice; the computer-use scope and usage remain documented above.
+
+## Nano Banana (default)
+
+Set `GEMINI_API_KEY` in your local `.env`, then run `npm run generate -- --prompt-file brief.txt`. Generates five distinct 1024×1024 PNGs using Google Nano Banana. Obtain the key from https://aistudio.google.com/api-keys; image generation requires model access and available quota. Use `--dry-run` without a key. To switch later, set `OPENAI_API_KEY` and pass `--provider openai`. Override the model with `--model`. Keys are never stored in output manifests.
