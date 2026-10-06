@@ -1,0 +1,3 @@
+# generated animatics and frame work dirs
+*.mp4
+.work-*/
