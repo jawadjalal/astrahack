@@ -1,0 +1,238 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Tldraw, type Editor } from "tldraw";
+import "tldraw/tldraw.css";
+import { applyEnvelope } from "../lib/applyOp";
+import { withBase } from "../lib/base";
+import type { Envelope } from "../lib/ops";
+import { customShapeUtils } from "./shapes";
+
+type Status = "connecting" | "connected" | "reconnecting";
+
+const pill: React.CSSProperties = {
+  background: "rgba(20,20,24,0.88)",
+  color: "#fff",
+  font: "500 12px/1 system-ui, sans-serif",
+  borderRadius: 999,
+  padding: "8px 12px",
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+  backdropFilter: "blur(6px)",
+};
+
+const btn = (active?: boolean): React.CSSProperties => ({
+  background: active ? "#3b82f6" : "rgba(20,20,24,0.88)",
+  color: "#fff",
+  border: "1px solid rgba(255,255,255,0.12)",
+  font: "500 12px/1 system-ui, sans-serif",
+  borderRadius: 8,
+  padding: "8px 12px",
+  cursor: "pointer",
+});
+
+async function imageSize(url: string): Promise<{ w: number; h: number }> {
+  return new Promise((resolve) => {
+    const img = new window.Image();
+    img.onload = () => resolve({ w: img.naturalWidth || 800, h: img.naturalHeight || 600 });
+    img.onerror = () => resolve({ w: 800, h: 600 });
+    img.src = url;
+  });
+}
+
+export default function Canvas() {
+  const [editor, setEditor] = useState<Editor | null>(null);
+  const [status, setStatus] = useState<Status>("connecting");
+  const [opCount, setOpCount] = useState(0);
+  const [follow, setFollow] = useState(true);
+  const [present, setPresent] = useState(false);
+  const followRef = useRef(true);
+  followRef.current = follow;
+
+  const handleMount = useCallback((ed: Editor) => {
+    ed.user.updateUserPreferences({ colorScheme: "light" });
+    (window as unknown as { __editor?: Editor }).__editor = ed; // debugging handle
+    setEditor(ed);
+  }, []);
+
+  // ---- connection: state snapshot, then SSE with auto-reconnect ----
+  useEffect(() => {
+    if (!editor) return;
+    let disposed = false;
+    let es: EventSource | null = null;
+    let retry: ReturnType<typeof setTimeout> | null = null;
+    let lastSeq = 0;
+    let seen = new Set<number>();
+    let bulk = true; // initial replay: no camera follow, no fade
+    let chain: Promise<void> = Promise.resolve();
+
+    const enqueue = (env: Envelope) => {
+      if (seen.has(env.seq)) return;
+      seen.add(env.seq);
+      if (env.op.type === "clear") {
+        // server may restart numbering after a clear; forget older seqs
+        seen = new Set([env.seq]);
+        lastSeq = env.seq;
+      } else {
+        lastSeq = Math.max(lastSeq, env.seq);
+      }
+      chain = chain
+        .then(() =>
+          applyEnvelope(editor, env, {
+            follow: !bulk && followRef.current,
+            animate: !bulk,
+          }),
+        )
+        .catch((e) => console.error("[canvas] apply failed", env, e))
+        .then(() => setOpCount((n) => n + 1));
+    };
+
+    const connect = () => {
+      if (disposed) return;
+      es = new EventSource(withBase(`/api/events?since=${lastSeq}`));
+      es.onopen = () => setStatus("connected");
+      es.onmessage = (m) => {
+        try {
+          enqueue(JSON.parse(m.data) as Envelope);
+        } catch (e) {
+          console.error("[canvas] bad event", m.data, e);
+        }
+      };
+      es.onerror = () => {
+        es?.close();
+        es = null;
+        if (disposed) return;
+        setStatus("reconnecting");
+        retry = setTimeout(connect, 1500);
+      };
+    };
+
+    (async () => {
+      try {
+        const res = await fetch(withBase("/api/state"), { cache: "no-store" });
+        const state = (await res.json()) as { seq: number; ops: Envelope[] };
+        for (const env of state.ops) enqueue(env);
+        lastSeq = Math.max(lastSeq, state.seq ?? 0);
+      } catch (e) {
+        console.warn("[canvas] state fetch failed", e);
+      }
+      if (disposed) return;
+      await chain;
+      bulk = false;
+      connect();
+      // fit once the viewport is actually measured (a hidden/unsized tab reports 1x1 and
+      // zoomToFit would pick a bogus zoom)
+      for (let i = 0; i < 300 && !disposed && editor.getViewportScreenBounds().w < 50; i++) {
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      await new Promise((r) => setTimeout(r, 150));
+      if (!disposed && editor.getCurrentPageShapeIds().size) editor.zoomToFit({ immediate: true });
+    })();
+
+    return () => {
+      disposed = true;
+      es?.close();
+      if (retry) clearTimeout(retry);
+    };
+  }, [editor]);
+
+  // ---- present mode ----
+  useEffect(() => {
+    editor?.updateInstanceState({ isReadonly: present });
+  }, [editor, present]);
+
+  // ---- drag & drop files -> /api/upload -> /api/ops ----
+  const onDropCapture = useCallback(
+    async (e: React.DragEvent) => {
+      const files = Array.from(e.dataTransfer?.files ?? []).filter(
+        (f) => f.type.startsWith("image/") || f.type === "video/mp4",
+      );
+      if (!files.length || !editor) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const p = editor.screenToPage({ x: e.clientX, y: e.clientY });
+      let offset = 0;
+      for (const file of files) {
+        try {
+          const fd = new FormData();
+          fd.append("file", file);
+          const up = await fetch(withBase("/api/upload"), { method: "POST", body: fd });
+          const { url } = (await up.json()) as { url: string };
+          const x = p.x + offset;
+          const y = p.y + offset;
+          offset += 40;
+          let op: Record<string, unknown>;
+          if (file.type.startsWith("video/")) {
+            op = { type: "add_video", src: url, x, y, label: file.name };
+          } else {
+            const { w, h } = await imageSize(withBase(url));
+            const s = Math.min(1, 900 / w);
+            op = { type: "add_image", src: url, x, y, w: w * s, h: h * s, label: file.name };
+          }
+          await fetch(withBase("/api/ops"), {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(op),
+          });
+        } catch (err) {
+          console.error("[canvas] upload failed", err);
+        }
+      }
+    },
+    [editor],
+  );
+
+  const clearAll = async () => {
+    if (!confirm("Clear the whole canvas?")) return;
+    await fetch(withBase("/api/state"), { method: "DELETE" });
+  };
+
+  const fitAll = () => {
+    editor?.zoomToFit({ animation: { duration: 400 } });
+  };
+
+  const dot =
+    status === "connected" ? "#22c55e" : status === "reconnecting" ? "#f59e0b" : "#9ca3af";
+
+  return (
+    <div
+      style={{ position: "fixed", inset: 0 }}
+      onDropCapture={onDropCapture}
+      onDragOverCapture={(e) => {
+        if (e.dataTransfer?.types.includes("Files")) e.preventDefault();
+      }}
+    >
+      <Tldraw
+        shapeUtils={customShapeUtils}
+        onMount={handleMount}
+        hideUi={present}
+      />
+
+      <div style={{ position: "absolute", top: 8, right: present ? 8 : 200, zIndex: 1000, ...pill }}>
+        <span style={{ width: 8, height: 8, borderRadius: 99, background: dot }} />
+        {status === "connected" ? "connected" : status === "reconnecting" ? "reconnecting" : "connecting"}
+        <span style={{ opacity: 0.6 }}>{opCount} ops</span>
+      </div>
+
+      <div style={{ position: "absolute", left: 8, bottom: 64, zIndex: 1000, display: "flex", gap: 6 }}>
+        {!present && (
+          <>
+            <button style={btn()} onClick={clearAll}>
+              Clear
+            </button>
+            <button style={btn()} onClick={fitAll}>
+              Fit all
+            </button>
+            <button style={btn(follow)} onClick={() => setFollow((f) => !f)}>
+              Follow {follow ? "on" : "off"}
+            </button>
+          </>
+        )}
+        <button style={btn(present)} onClick={() => setPresent((p) => !p)}>
+          {present ? "Exit present" : "Present"}
+        </button>
+      </div>
+    </div>
+  );
+}
