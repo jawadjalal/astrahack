@@ -31,3 +31,7 @@ The computer-use agent is the source of observed product knowledge for QA and pr
 For one supported website or app, a run should complete a small set of important user journeys and produce evidence that another person can review: what the agent did, what it saw, where it got stuck, and what it learned. The QA findings should be reproducible, and the promotional outputs should refer to features the agent actually found in the product.
 
 This README defines the initial product direction. Implementation details, supported platforms, and setup instructions will be added as the MVP takes shape.
+
+## Planning notes
+
+The documents in [`docs/`](docs/) capture earlier planning for the creative-generation part of the product. They predate the broader MVP described here and are retained as background, not as the current scope for the computer-use work.
