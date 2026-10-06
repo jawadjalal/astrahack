@@ -50,12 +50,14 @@ test('Luna computer loop records actions and verifies evidence references', { sk
         })
       }] }] };
     };
-    const { out, report } = await runQaAgent({ url: pathToFileURL(fixture).href, output: join(directory, 'run'), chrome, request });
+    const { out, report } = await runQaAgent({ url: pathToFileURL(fixture).href, output: join(directory, 'run'), chrome, request, maxTurns: 2 });
     assert.equal(report.status, 'completed', report.error);
     assert.equal(report.steps.length, 1);
     assert.equal(report.assessment.issues[0].evidence, report.steps[0].screenshot);
     assert.equal(calls[0].model, 'gpt-6-luna');
     assert.equal(calls[1].previous_response_id, 'resp-1');
+    assert.equal(calls[1].tool_choice, 'none', 'Final turn must summarize observed evidence');
+    assert.deepEqual(calls[1].tools, [{ type: 'computer' }], 'Computer outputs require the tool to stay enabled');
     assert.equal(calls[1].input[0].call_id, 'call-1');
     assert.equal(JSON.parse(calls[1].input[1].content[0].text).executedSteps[0].step, 1);
     assert.equal(calls[0].max_output_tokens, 2048);

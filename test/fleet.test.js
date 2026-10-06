@@ -5,7 +5,7 @@ import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { planFleet, runFleet } from '../src/fleet.js';
+import { defaultFleetConcurrency, planFleet, runFleet } from '../src/fleet.js';
 
 const page = (url, controls = []) => ({
   url, finalUrl: url, status: 'visited', screenshot: 'screenshots/page.png',
@@ -25,6 +25,16 @@ async function mockFleet(options) {
       agent: async ({ url }) => completed(url), request: async () => ({}), ...options });
   } finally { await rm(output, { recursive: true, force: true }); }
 }
+
+test('default parallelism scales with available memory, CPUs, and planned work', () => {
+  const GiB = 1024 ** 3;
+  assert.equal(defaultFleetConcurrency(40, { freeMemoryBytes: 128 * GiB, cpuCount: 64 }), 16);
+  assert.equal(defaultFleetConcurrency(40, { freeMemoryBytes: 3 * GiB, cpuCount: 64 }), 4);
+  assert.equal(defaultFleetConcurrency(40, { freeMemoryBytes: 128 * GiB, cpuCount: 8 }), 4);
+  assert.equal(defaultFleetConcurrency(5, { freeMemoryBytes: 128 * GiB, cpuCount: 64 }), 5);
+  assert.equal(defaultFleetConcurrency(40, { freeMemoryBytes: 100 * 1024 ** 2, cpuCount: 2 }), 3);
+  assert.equal(defaultFleetConcurrency(0, { freeMemoryBytes: 0, cpuCount: 1 }), 3);
+});
 
 test('fleet launches separate real browser sessions for discovered pages', {
   skip: !existsSync(process.env.ASTRAHACK_CHROME || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome')
@@ -120,7 +130,7 @@ test('fleet runs isolated agents in parallel and merges numbered evidence', asyn
     assert.equal(result.fleet.model, 'gpt-6-luna');
     assert.equal(result.agent.model, 'gpt-6-luna');
     assert.equal(result.fleet.limits.maxAgents, null);
-    assert.equal(result.fleet.limits.maxRequests, 30);
+    assert.ok(result.fleet.limits.maxRequests == null);
     assert.equal(result.fleet.limits.maxDurationMs, 300000);
     assert.equal(result.fleet.limits.maxOutputTokens, 2048);
     assert.equal(JSON.parse(await readFile(join(output, 'fleet.json'), 'utf8')).status, 'completed');
@@ -181,16 +191,46 @@ test('all mission types can discover routes and newly observed controls receive 
   assert.deepEqual(result.fleet.unscheduledMissions, []);
 });
 
-test('adaptive execution continues beyond 60 agents while useful work remains', async () => {
+test('explicit parallelism supports 16 simultaneous agents without a fixed call or agent cap', async () => {
   const urls = Array.from({ length: 65 }, (_, index) => `https://site.test/${index}`);
   const visited = new Set();
+  let active = 0;
+  let peak = 0;
   const result = await mockFleet({
+    concurrency: 16,
     crawl: async () => ({ report: { target: 'https://site.test/', pages: urls.map(url => page(url)), observations: [] } }),
-    agent: async ({ url }) => { visited.add(url); return completed(url); }
+    agent: async ({ url, runtime, model }) => {
+      visited.add(url);
+      active++;
+      peak = Math.max(peak, active);
+      await runtime.request({ model });
+      await new Promise(resolve => setTimeout(resolve, 3));
+      active--;
+      return completed(url);
+    }
   });
   assert.equal(visited.size, 65);
   assert.equal(result.fleet.coverage.totalAgents, 67);
+  assert.equal(result.fleet.usage.requests, 67);
+  assert.ok(result.fleet.limits.maxRequests == null);
+  assert.equal(result.fleet.limits.concurrency, 16);
+  assert.equal(peak, 16);
   assert.equal(result.fleet.status, 'completed');
+});
+
+test('a small site defaults to three simultaneous useful scouts', async () => {
+  let active = 0;
+  let peak = 0;
+  const result = await mockFleet({ agent: async ({ url }) => {
+    active++;
+    peak = Math.max(peak, active);
+    await new Promise(resolve => setTimeout(resolve, 3));
+    active--;
+    return completed(url);
+  } });
+  assert.equal(result.fleet.limits.concurrency, 3);
+  assert.equal(result.fleet.coverage.totalAgents, 3);
+  assert.equal(peak, 3);
 });
 
 test('an explicit agent ceiling reports every remaining route and incomplete coverage', async () => {

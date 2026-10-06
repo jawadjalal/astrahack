@@ -15,8 +15,8 @@ export class RunLimitError extends Error {
 }
 
 /** Reserve requests synchronously before awaiting so concurrent workers share one hard call cap. */
-export function createRunBudget(request, { maxRequests = 30, maxDurationMs = 300000, maxOutputTokens = 2048, signal } = {}) {
-  integerLimit('maxRequests', maxRequests, 1, 10000);
+export function createRunBudget(request, { maxRequests, maxDurationMs = 300000, maxOutputTokens = 2048, signal } = {}) {
+  if (maxRequests !== undefined) integerLimit('maxRequests', maxRequests, 1, 10000);
   integerLimit('maxDurationMs', maxDurationMs, 1000, 7200000);
   integerLimit('maxOutputTokens', maxOutputTokens, 256, 32768);
   const deadline = AbortSignal.timeout(maxDurationMs);
@@ -24,7 +24,7 @@ export function createRunBudget(request, { maxRequests = 30, maxDurationMs = 300
   const usage = { requests: 0, completedRequests: 0, failedRequests: 0, inputTokens: 0, cachedInputTokens: 0, outputTokens: 0, totalTokens: 0, byModel: Object.create(null) };
   const check = () => {
     if (combinedSignal.aborted) throw new RunLimitError('Run cancelled or time limit reached');
-    if (usage.requests >= maxRequests) throw new RunLimitError(`Shared API request limit (${maxRequests}) reached`);
+    if (maxRequests !== undefined && usage.requests >= maxRequests) throw new RunLimitError(`Shared API request limit (${maxRequests}) reached`);
   };
   const recordUsage = (response, payload) => {
       const model = response.model || payload.model;
@@ -54,5 +54,5 @@ export function createRunBudget(request, { maxRequests = 30, maxDurationMs = 300
     }
   };
   return { request: wrapped, usage, signal: combinedSignal, check,
-    limits: { maxRequests, maxDurationMs, maxOutputTokens } };
+    limits: { maxRequests: maxRequests ?? null, maxDurationMs, maxOutputTokens } };
 }

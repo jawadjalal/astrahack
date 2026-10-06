@@ -99,7 +99,7 @@ Exit status is `0` for a passing run, `1` for QA findings, and `2` for setup or 
 
 The crawler inventories same-origin pages and saves screenshots. The fleet then starts three distinct scouts: a user journey, a feature map, and a controls or navigation audit. Additional workers cover observed pages and newly discovered routes or controls. Each worker has its own Chrome profile and uses screenshot-driven mouse and keyboard actions through the OpenAI `computer` tool. The initial inventory is sequential; worker missions run concurrently.
 
-**GPT-6 Luna is the default.** Agent count follows the discovered work, with no fixed 60-agent allocation. Up to eight browsers run at once by default. One shared budget permits 30 API requests, five minutes (including initial crawl time), and 2,048 output tokens per response. These are request/time/token limits, not a guaranteed dollar cap. Actual API token usage is recorded. There are no automatic paid retries or model upgrades. Set `OPENAI_QA_MODEL` or pass `--model` for a deliberate targeted rerun with another model.
+**GPT-6 Luna is the default.** Agent count follows the discovered work, with no fixed 60-agent allocation. Parallelism scales from three to 16 browsers based on discovered work; the total number of agents is adaptive. There is no default API-call cap. A five-minute run deadline (including initial crawl time) and 2,048 output tokens per response keep each run bounded; these are not a guaranteed dollar cap. Actual API token usage is recorded. There are no automatic paid retries or model upgrades. Set `OPENAI_QA_MODEL` or pass `--model` for a deliberate targeted rerun with another model.
 
 Copy [`examples/qa.json`](examples/qa.json), set its URL, and put `OPENAI_API_KEY` in the ignored local `.env`. Then run:
 
@@ -108,7 +108,7 @@ ASTRAHACK_CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" 
   node bin/qa.js fleet examples/qa.json --output runs/site-fleet
 ```
 
-The CLI loads `.env`. For a small live pilot, add `--max-agents 3 --concurrency 3 --max-turns 3 --max-requests 9`. Omit `maxAgents` for adaptive allocation; an explicit ceiling must be at least three. `maxTurns` and `maxActions` apply per worker, while `maxRequests` and `maxDurationMs` are shared. To collect evidence without API charges, use `crawl` instead of `fleet`; `agent` runs a single targeted worker.
+The CLI loads `.env`. Omit `maxAgents`, `concurrency`, and `maxRequests` for automatic sizing without an API-call cap. Optional explicit ceilings are available for constrained environments; `maxAgents` must be at least three. `maxTurns` and `maxActions` apply per worker, while an optional `maxRequests` and the `maxDurationMs` deadline are shared. To collect evidence without API charges, use `crawl` instead of `fleet`; `agent` runs a single targeted worker.
 
 The fleet writes `crawl.json`, `fleet.json`, a combined `qa-agent.json`, and `workers/A###/qa-agent.json`. Reports include worker IDs, globally numbered actions, actual token usage, screenshots, unscheduled missions, failed workers, and uncovered routes. An unfinished fleet reports partial coverage and exits with status 1; setup errors exit with status 2. Reaching a limit never means the whole site passed QA.
 
@@ -116,7 +116,7 @@ The browser adapter supports clicks, double clicks, scrolling, dragging, typing,
 
 ### Feature screenshots, analysis, and canvas
 
-The downstream agents also default to Luna. They review observed evidence, produce a curated screenshot set and QA findings, and explicitly list coverage gaps. Each stage makes its own API call outside the fleet budget:
+The downstream agents also default to Luna. They review observed evidence, produce a curated screenshot set and QA findings, and explicitly list coverage gaps. Each stage makes its own API call:
 
 ```sh
 node --env-file-if-exists=.env bin/analyze-qa.js runs/site-fleet

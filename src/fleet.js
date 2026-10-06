@@ -1,4 +1,5 @@
 import { mkdir, writeFile } from 'node:fs/promises';
+import { availableParallelism, freemem } from 'node:os';
 import { join, resolve } from 'node:path';
 import { crawlSite, normalizeLink } from './crawl.js';
 import { runQaAgent } from './qa-agent.js';
@@ -6,6 +7,14 @@ import { createResponse } from './openai.js';
 import { createRunBudget, integerLimit, qaModel } from './qa-runtime.js';
 
 const saveJson = (path, value) => writeFile(path, JSON.stringify(value, null, 2) + '\n');
+
+export function defaultFleetConcurrency(plannedJobs, {
+  freeMemoryBytes = freemem(), cpuCount = availableParallelism()
+} = {}) {
+  const memorySlots = Math.max(3, Math.floor(freeMemoryBytes / (768 * 1024 * 1024)));
+  const cpuSlots = Math.max(3, Math.floor(cpuCount / 2));
+  return Math.max(3, Math.min(16, plannedJobs, memorySlots, cpuSlots));
+}
 
 function validateAgentCeiling(maxAgents) {
   if (maxAgents !== undefined && (!Number.isSafeInteger(maxAgents) || maxAgents < 3)) {
@@ -101,13 +110,13 @@ export function combineAgentReports(crawl, jobs, results, model = qaModel()) {
 
 export async function runFleet({
   url, chrome, output, brief = '', model,
-  maxPages = 50, maxDepth = 4, maxAgents, concurrency = 8,
+  maxPages = 50, maxDepth = 4, maxAgents, concurrency,
   maxTurns = 8, maxActions = 25, headless = true,
-  maxRequests = 30, maxDurationMs = 300000, maxOutputTokens = 2048, signal,
+  maxRequests, maxDurationMs = 300000, maxOutputTokens = 2048, signal,
   request = createResponse, crawl = crawlSite, agent = runQaAgent, onProgress
 }) {
   if (!url || !chrome || !output) throw new Error('url, chrome, and output are required');
-  integerLimit('concurrency', concurrency, 1, 16);
+  if (concurrency !== undefined) integerLimit('concurrency', concurrency, 1, 16);
   validateAgentCeiling(maxAgents);
   const agentCeiling = maxAgents ?? Infinity;
   integerLimit('maxTurns', maxTurns, 1, 50);
@@ -121,6 +130,7 @@ export async function runFleet({
   await onProgress?.({ phase: 'crawl', status: 'started' });
   const { report: crawlReport } = await crawl({ url, chrome, output: out, maxPages, maxDepth, headless });
   const fullPlan = planFleet(crawlReport);
+  concurrency ??= defaultFleetConcurrency(fullPlan.jobs.length);
   const queue = [...fullPlan.jobs];
   const jobs = [];
   const results = [];
