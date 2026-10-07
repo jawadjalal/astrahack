@@ -19,6 +19,21 @@ const Canvas = dynamic(() => import("./Canvas"), {
   ),
 });
 
+const IGNURA_URL = "https://ignura.com/";
+const REPLAY_STEPS = ["Understanding your site", "QA fleet", "Screenshots", "Launch kit"] as const;
+const REPLAY_MESSAGES = [
+  "Getting to know the pages and product flows.",
+  "Following the QA fleet through the site.",
+  "Bringing together the feature screenshots.",
+  "Opening the screenshots and launch ideas on your whiteboard.",
+] as const;
+const REPLAY_HEADLINES: [string, string, string][] = [
+  ["Astra is getting to ", "know", " your product"],
+  ["Astra’s QA fleet is ", "using", " your site"],
+  ["Astra is gathering your ", "screenshots", ""],
+  ["Astra is opening your ", "launch kit", ""],
+];
+
 const terminal = new Set(["completed", "partial", "failed"]);
 const labels: Record<Run["status"], string> = {
   queued: "Getting ready",
@@ -63,8 +78,10 @@ function updateLocation(runId?: string, canvas = false) {
 
 const prefersReducedMotion = () => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 
-export default function RunExperience({ initialRunId = null, initialCanvas = false }: { initialRunId?: string | null; initialCanvas?: boolean }) {
-  const [targetUrl, setTargetUrl] = useState("");
+export default function RunExperience({ initialRunId = null, initialCanvas = false, recordedIgnura = false }: { initialRunId?: string | null; initialCanvas?: boolean; recordedIgnura?: boolean }) {
+  const [targetUrl, setTargetUrl] = useState(recordedIgnura ? IGNURA_URL : "");
+  const [replayActive, setReplayActive] = useState(false);
+  const [replayStep, setReplayStep] = useState(0);
   const [run, setRun] = useState<Run | null>(null);
   const [runId, setRunId] = useState<string | null>(initialRunId);
   // a run draws on its own board (named after the run id); `?board=<id>` opens any other board; no param means `main`
@@ -83,6 +100,15 @@ export default function RunExperience({ initialRunId = null, initialCanvas = fal
   const [stageGone, setStageGone] = useState(false);
   const fieldRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // The recording route reuses existing evidence without creating a job or spending API credits.
+  useEffect(() => {
+    if (!replayActive) return;
+    const timers = REPLAY_STEPS.map((_, index) =>
+      setTimeout(() => setReplayStep(index + 1), (index + 1) * 2500),
+    );
+    return () => timers.forEach(clearTimeout);
+  }, [replayActive]);
 
   useEffect(() => {
     if (!runId) return;
@@ -116,7 +142,7 @@ export default function RunExperience({ initialRunId = null, initialCanvas = fal
   }, [runId]);
 
   // Hand-off: once evidence starts landing (or the visitor peeks), the progress screen fades out over the board.
-  const handedOff = peeked || evidenceIsLive(run);
+  const handedOff = peeked || (replayActive && replayStep >= REPLAY_STEPS.length) || evidenceIsLive(run);
   useEffect(() => {
     if (!handedOff) return;
     const timer = setTimeout(() => setStageGone(true), prefersReducedMotion() ? 0 : 480);
@@ -139,6 +165,19 @@ export default function RunExperience({ initialRunId = null, initialCanvas = fal
     event.preventDefault();
     if (submitting) return;
     setError("");
+    if (recordedIgnura) {
+      setRun(null);
+      setRunId(null);
+      setStatusError("");
+      setReplayStep(0);
+      setReplayActive(true);
+      setPeeked(false);
+      setStageGone(false);
+      setShowCanvas(true);
+      setShowForm(false);
+      updateLocation(undefined, true);
+      return;
+    }
     const trimmed = targetUrl.trim();
     let url: URL;
     try {
@@ -179,23 +218,34 @@ export default function RunExperience({ initialRunId = null, initialCanvas = fal
     updateLocation(runId || undefined, true);
   };
 
-  const newRun = () => { setError(""); setShowForm(true); };
+  const newRun = () => {
+    setError("");
+    setReplayActive(false);
+    setReplayStep(0);
+    setShowForm(true);
+  };
 
   // ---- derived view state ----
   const unavailable = !run && !!statusError;
-  const stageVisible = !showForm && !!runId && !stageGone;
-  const dockVisible = !showForm && (!runId || handedOff);
+  const stageVisible = !showForm && (!!runId || replayActive) && !stageGone;
+  const dockVisible = !showForm && (!(runId || replayActive) || handedOff);
   const failed = run?.status === "failed";
-  const current = run ? (failed ? Math.max(reached, 1) : stepIndex(run)) : 0;
+  const current = replayActive ? replayStep : run ? (failed ? Math.max(reached, 1) : stepIndex(run)) : 0;
+  const activeUrl = replayActive ? IGNURA_URL : run?.url;
+  const hasProgress = !!run || replayActive;
   const mood = error ? "oops" : submitting ? "busy" : targetUrl.trim() ? "typing" : "idle";
   const bubble = error ? "Hmm, that didn’t go through. Mind checking?" : submitting ? "On it. One moment…" : "Paste your site and I’ll use it like a customer.";
-  const [before, em, after] = headline(run, unavailable);
-  const message = run ? run.message || (run.status === "queued" ? "Your URL is queued. Exploration starts when a worker picks it up." : labels[run.status]) : "";
+  const [before, em, after] = replayActive
+    ? REPLAY_HEADLINES[Math.min(replayStep, REPLAY_STEPS.length - 1)]
+    : headline(run, unavailable);
+  const message = replayActive
+    ? replayStep >= REPLAY_STEPS.length ? "Your screenshots and launch ideas are on the whiteboard." : REPLAY_MESSAGES[replayStep]
+    : run ? run.message || (run.status === "queued" ? "Your URL is queued. Exploration starts when a worker picks it up." : labels[run.status]) : "";
 
   return (
     <>
       <RoughDefs />
-      {showCanvas && <Canvas key={board} board={board} />}
+      {showCanvas && <Canvas key={board} board={board} restoreSavedFocus={recordedIgnura} />}
 
       {showForm && (
         <main className={`${styles.stage} ${styles.paper} ${showCanvas ? styles.overlay : ""}`}>
@@ -224,7 +274,7 @@ export default function RunExperience({ initialRunId = null, initialCanvas = fal
                   </svg>
                   <input id="target-url" name="url" type="text" inputMode="url" autoComplete="url" ref={inputRef}
                     autoCapitalize="none" spellCheck={false} required placeholder="https://your-product.com"
-                    value={targetUrl} onChange={(event) => setTargetUrl(event.target.value)}
+                    value={targetUrl} readOnly={recordedIgnura} onChange={(event) => setTargetUrl(event.target.value)}
                     aria-invalid={!!error} aria-describedby={error ? "url-error url-help" : "url-help"}
                     disabled={submitting} autoFocus />
                 </div>
@@ -259,13 +309,13 @@ export default function RunExperience({ initialRunId = null, initialCanvas = fal
               <img className={styles.astraArt} src={withBase("/ignura/astra/astra.svg")} width={132} alt="" draggable={false} />
             </div>
             <h1 id="run-title" className={styles.title}>{before}<em>{em}<img className={styles.swoosh} src={withBase("/ignura/doodles/underline-swoosh.svg")} alt="" draggable={false} /></em>{after}</h1>
-            {run && (
-              <a className={styles.target} href={run.url} target="_blank" rel="noreferrer">
-                <span>{run.url}</span>
+            {activeUrl && (
+              <a className={styles.target} href={activeUrl} target="_blank" rel="noreferrer">
+                <span>{activeUrl}</span>
               </a>
             )}
-            {run && <div className={styles.stepWrap}><RunStepper current={current} failed={failed} /></div>}
-            {run && <p role="status" className={styles.note}><span key={message}>{message}</span></p>}
+            {hasProgress && <div className={styles.stepWrap}><RunStepper current={current} failed={failed} labels={replayActive ? REPLAY_STEPS : undefined} /></div>}
+            {hasProgress && <p role="status" className={styles.note}><span key={message}>{message}</span></p>}
             {statusError && <p role="alert" className={styles.error}>{statusError}</p>}
             <div className={styles.actions}>
               {(failed || unavailable) ? (
@@ -281,12 +331,12 @@ export default function RunExperience({ initialRunId = null, initialCanvas = fal
         <aside className={`ig-pop ${styles.dock}`} aria-label="Product exploration">
           <img className={styles.dockMark} src={withBase("/ignura/astra/astra-mark.svg")} width={34} height={34} alt="" draggable={false} />
           <div className={styles.dockBody}>
-            <strong>{run ? (run.status === "running" ? RUN_STEPS[Math.min(current, LAST_STEP)].label : labels[run.status]) : statusError ? "Run unavailable" : runId ? "Loading run…" : "Astra"}</strong>
-            {run && <a className={styles.dockTarget} href={run.url} target="_blank" rel="noreferrer">{run.url}</a>}
+            <strong>{replayActive ? (replayStep >= REPLAY_STEPS.length ? "All done" : REPLAY_STEPS[replayStep]) : run ? (run.status === "running" ? RUN_STEPS[Math.min(current, LAST_STEP)].label : labels[run.status]) : statusError ? "Run unavailable" : runId ? "Loading run…" : "Astra"}</strong>
+            {activeUrl && <a className={styles.dockTarget} href={activeUrl} target="_blank" rel="noreferrer">{activeUrl}</a>}
           </div>
-          {run && <span className={styles.dockMini}><MiniSteps current={current} failed={failed} /></span>}
+          {hasProgress && <span className={styles.dockMini}><MiniSteps current={current} failed={failed} /></span>}
           <button type="button" className="ig-btn ig-btn-small ig-btn-ghost" onClick={newRun}><span>New run</span></button>
-          {run && <p role="status" className={styles.dockNote}>{message}</p>}
+          {hasProgress && <p role="status" className={styles.dockNote}>{message}</p>}
           {statusError && <p role="alert" className={`${styles.error} ${styles.dockNote}`}>{statusError}</p>}
         </aside>
       )}

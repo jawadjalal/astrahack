@@ -8,7 +8,8 @@ import { generateCreatives } from '../lib/generate.mjs';
 import { generateCampaigns } from '../lib/campaigns.mjs';
 import { planUgc } from '../ugc/plan.mjs';
 import { renderPlan } from '../ugc/render.mjs';
-import { createResponse } from './openai.js';
+import { streamResponse } from '../lib/responses-stream.mjs';
+import { readCanvasJson } from './canvas-response.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const json = (file, value) => writeFile(file, JSON.stringify(value, null, 2) + '\n');
@@ -74,15 +75,15 @@ export async function generateWebKit(output, { url, runId, signal, onProgress = 
   await Promise.all([
     run('ads', () => ads({ prompt: brief, outputDir: directory, provider: env.IMAGE_PROVIDER || 'openai',
       openaiApi: 'responses', responseModel: env.OPENAI_IMAGE_RESPONSE_MODEL || 'gpt-6-luna',
-      quality: env.OPENAI_IMAGE_QUALITY || 'low', fetchImpl: safeFetch, signal, timeoutMs: 600000 })),
+      quality: env.OPENAI_IMAGE_QUALITY || 'low', fetchImpl: safeFetch, signal, requestTimeoutMs: 600000 })),
     run('campaigns', () => campaigns({ prompt: brief, outputDir: directory, provider: env.CAMPAIGN_PROVIDER || 'openai',
       model: env.CAMPAIGN_PROVIDER === 'gemini' ? env.GEMINI_TEXT_MODEL : env.OPENAI_TEXT_MODEL || 'gpt-6-luna',
-      channels: ['x', 'reddit'], fetchImpl: safeFetch, signal, timeoutMs: 600000 })),
+      channels: ['x', 'reddit'], fetchImpl: safeFetch, signal, requestTimeoutMs: 600000 })),
     run('ugc', async () => {
       const document = await ugc({ report, brief, provider: env.UGC_PROVIDER || 'openai',
         model: env.UGC_PROVIDER === 'gemini' ? env.GEMINI_TEXT_MODEL : env.OPENAI_TEXT_MODEL || 'gpt-6-luna',
         reportPath, runDir: output, fetchImpl: safeFetch,
-        request: (payload, options = {}) => createResponse(payload, { ...options, signal, timeoutMs: 600000 }) });
+        request: (payload, options = {}) => streamResponse(payload, { ...options, signal, timeoutMs: 600000 }) });
       const path = join(output, 'ugc-plan.json');
       await Promise.all([json(path, document), writeFile(join(output, 'ugc-plan.md'), render(document))]);
       return { path, document };
@@ -116,8 +117,8 @@ export async function publishWebKit(kit, { output, canvasUrl, runId, board, sign
   const request = bounded(signal, fetchImpl);
   const base = canvasUrl.replace(/\/+$/, '');
   const call = async (path, init) => {
-    const response = await request(boardApi(base, board)(path), init);
-    const body = await response.json().catch(() => ({}));
+    const response = await request(boardApi(base, board)(path), { ...init, redirect: 'manual' });
+    const body = await readCanvasJson(response);
     if (!response.ok) {
       const error = new Error(`Canvas request failed (HTTP ${response.status}).`);
       error.status = response.status;
@@ -128,6 +129,7 @@ export async function publishWebKit(kit, { output, canvasUrl, runId, board, sign
     return body;
   };
   const state = await call('/state');
+  if (!Array.isArray(state.ops)) throw new Error('Canvas state response is missing its ops array.');
   const { box, ids } = layout.stateBounds(state.ops || []);
   const srcMap = {}, sizes = {};
   for (const creative of kit.ads?.manifest?.creatives || []) if (creative.status === 'complete') {

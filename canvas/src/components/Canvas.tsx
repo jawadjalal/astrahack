@@ -45,7 +45,7 @@ const components: TLUiComponents = {
   StylePanel: IguraStylePanel,
 };
 
-export default function Canvas({ board: boardProp }: { board?: string } = {}) {
+export default function Canvas({ board: boardProp, restoreSavedFocus = false }: { board?: string; restoreSavedFocus?: boolean } = {}) {
   const board = useMemo(() => boardProp ?? boardFromLocation(), [boardProp]);
   setActiveBoard(board);
   const [editor, setEditor] = useState<Editor | null>(null);
@@ -120,10 +120,15 @@ export default function Canvas({ board: boardProp }: { board?: string } = {}) {
     };
 
     (async () => {
+      let savedFocus: Envelope | undefined;
       try {
         const res = await fetch(boardUrl("/api/state", board), { cache: "no-store" });
         const state = (await res.json()) as { seq: number; ops: Envelope[] };
-        for (const env of state.ops) enqueue(env);
+        for (const env of state.ops) {
+          if (env.op.type === "clear") savedFocus = undefined;
+          if (env.op.type === "focus") savedFocus = env;
+          enqueue(env);
+        }
         lastSeq = Math.max(lastSeq, state.seq ?? 0);
       } catch (e) {
         console.warn("[canvas] state fetch failed", e);
@@ -140,7 +145,14 @@ export default function Canvas({ board: boardProp }: { board?: string } = {}) {
         await new Promise((r) => setTimeout(r, 50));
       }
       await new Promise((r) => setTimeout(r, 150));
-      if (!disposed && editor.getCurrentPageShapeIds().size) fitAll(editor, { immediate: true });
+      if (!disposed && editor.getCurrentPageShapeIds().size) {
+        // A recorded walkthrough opens at its saved camera; ordinary boards retain the full-board overview.
+        if (restoreSavedFocus && savedFocus) {
+          await applyEnvelope(editor, savedFocus, { follow: false, animate: false });
+        } else {
+          fitAll(editor, { immediate: true });
+        }
+      }
     })();
 
     return () => {
@@ -148,7 +160,7 @@ export default function Canvas({ board: boardProp }: { board?: string } = {}) {
       es?.close();
       if (retry) clearTimeout(retry);
     };
-  }, [editor, board]);
+  }, [editor, board, restoreSavedFocus]);
 
   // ---- present mode ----
   useEffect(() => {

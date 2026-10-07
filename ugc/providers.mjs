@@ -1,8 +1,9 @@
 // Text-model calls for the planner. Same provider pattern as the rest of the repo:
 // Gemini via GEMINI_API_KEY + GEMINI_TEXT_MODEL (as lib/campaigns.mjs), OpenAI via
-// OPENAI_API_KEY and the shared Responses helper in src/openai.js (as src/qa-analysis.js).
+// OPENAI_API_KEY and the streaming Responses helper.
 // No dependencies. Provider error bodies are never surfaced, since they can echo request content.
-import { createResponse, outputText } from '../src/openai.js';
+import { outputText } from '../src/openai.js';
+import { streamResponse } from '../lib/responses-stream.mjs';
 
 export const PROVIDERS = ['gemini', 'openai'];
 const MAX_OUTPUT_TOKENS = 16384;
@@ -51,11 +52,16 @@ async function callGemini({ model, apiKey, system, user, schema, fetchImpl }) {
 
 async function callOpenAI({ model, apiKey, system, user, schema, fetchImpl, request }) {
   const payload = {
-    model, store: false, reasoning: { effort: 'low' }, max_output_tokens: MAX_OUTPUT_TOKENS,
+    model, store: false, reasoning: { effort: 'none' }, max_output_tokens: MAX_OUTPUT_TOKENS,
     text: { format: { type: 'json_schema', name: 'ugc_plan', strict: true, schema } },
     input: [{ role: 'system', content: system }, { role: 'user', content: user }],
   };
-  const response = await (request || createResponse)(payload, { apiKey, fetchImpl });
+  const response = await (request || streamResponse)(payload, { apiKey, fetchImpl });
+  if (response.status !== 'completed') {
+    const error = new Error('OpenAI did not finish the plan; output may be blocked or truncated.');
+    error.response = response;
+    throw error;
+  }
   return outputText(response);
 }
 

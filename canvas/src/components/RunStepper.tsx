@@ -59,7 +59,7 @@ const Cross = () => (
  * A hand-drawn stepper with Astra's cursor parked on the step she is on. `current` is a step index (or
  * RUN_STEPS.length for all done); `failed` marks that step as the one the run stopped on.
  */
-export default function RunStepper({ current, failed = false }: { current: number; failed?: boolean }) {
+export default function RunStepper({ current, failed = false, labels }: { current: number; failed?: boolean; labels?: readonly string[] }) {
   const cursor = Math.min(current, LAST_STEP);
   const style = { "--i": cursor, "--n": RUN_STEPS.length } as CSSProperties;
   return (
@@ -76,7 +76,7 @@ export default function RunStepper({ current, failed = false }: { current: numbe
                 {done ? <Check /> : state === "failed" ? <Cross /> : <b>{index + 1}</b>}
               </span>
               <span className={styles.label}>
-                {step.label}
+                {labels?.[index] ?? step.label}
                 <span className={styles.sr}> ({sr})</span>
               </span>
               {index < LAST_STEP && (

@@ -9,5 +9,6 @@ runs/
 .vercel
 .claude/
 .next/
+.next-*/
 next-env.d.ts
 *.log

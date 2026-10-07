@@ -11,7 +11,7 @@ import { extractObserved } from '../ugc/extract.mjs';
 import { mockPlan } from '../ugc/mock.mjs';
 import { planUgc, dryRunPrompts, modelSchema, validatePlan } from '../ugc/plan.mjs';
 import { validateSchema, contractPart } from '../ugc/validate.mjs';
-import { resolveProvider } from '../ugc/providers.mjs';
+import { callModel, resolveProvider } from '../ugc/providers.mjs';
 
 const FIXTURE = fileURLToPath(new URL('../ugc/fixtures/ignura/', import.meta.url));
 const CLI = fileURLToPath(new URL('../bin/ugc.js', import.meta.url));
@@ -180,7 +180,7 @@ test('openai path uses the shared Responses helper with strict structured output
   assert.equal(payload.p.text.format.type, 'json_schema');
   assert.equal(payload.p.text.format.strict, true);
   assert.equal(payload.p.store, false);
-  assert.equal(payload.p.reasoning.effort, 'low');
+  assert.equal(payload.p.reasoning.effort, 'none');
   assert.equal(payload.opts.apiKey, 'oa-key');
   assert.equal(payload.p.input[0].role, 'system');
   assert.deepEqual(validatePlan(plan, { assets }), []);
@@ -269,4 +269,24 @@ test('cli: --dry-run prints prompts and writes nothing; bad input exits 1 with a
   assert.equal(noKey.status, 1);
   assert.match(noKey.stderr, /GEMINI_API_KEY/);
   assert.deepEqual(await readdir(out), []);
+});
+
+
+test('default OpenAI UGC generation streams a completed plan and rejects incomplete terminal output', async () => {
+  let payload;
+  const out = modelOutput();
+  const plan = await planUgc({ report, provider: 'openai', apiKey: 'fixture-key', fetchImpl: async (url, init) => {
+    payload = JSON.parse(init.body);
+    assert.equal(url, 'https://api.openai.com/v1/responses');
+    assert.equal(init.headers.Accept, 'text/event-stream');
+    const response = { status: 'completed', output: [{ type: 'message', content: [{ type: 'output_text', text: JSON.stringify(out) }] }] };
+    return new Response(`data: ${JSON.stringify({ type: 'response.completed', response })}\n\n`);
+  } });
+  assert.equal(payload.stream, true);
+  assert.equal(payload.reasoning.effort, 'none');
+  assert.equal(plan.grounding.provider, 'openai');
+  const incomplete = { status: 'incomplete', usage: { total_tokens: 20 }, output: [{ type: 'message', content: [{ type: 'output_text', text: '{}' }] }] };
+  await assert.rejects(callModel({ provider: 'openai', model: 'gpt-6-luna', apiKey: 'fixture-key', system: '', user: '', schema: {},
+    fetchImpl: async () => new Response(`data: ${JSON.stringify({ type: 'response.incomplete', response: incomplete })}\n\n`)
+  }), error => /did not finish/.test(error.message) && error.response.usage.total_tokens === 20);
 });

@@ -28,7 +28,7 @@ test('real generator routes run concurrently, preserve partial output, and never
     assert.equal(options.provider, 'openai');
     assert.equal(options.mock, undefined);
     assert.equal(options.dryRun, undefined);
-    if (name !== 'ugc') assert.equal(options.timeoutMs, 600000);
+    if (name !== 'ugc') assert.equal(options.requestTimeoutMs, 600000);
     started.push(name);
     if (started.length === 3) release();
     await barrier;
@@ -138,5 +138,34 @@ test('kit publisher uploads real files and appends namespaced ops beside an exis
     assert.ok(posted.some(op => op.type === 'add_image' && op.src === '/astrahack/uploads/hero.png'));
     assert.ok(posted.filter(op => op.id).every(op => /^run-[a-f0-9]{12}-kit-/.test(op.id)));
     assert.ok(posted.every(op => !['clear', 'delete'].includes(op.type)));
+  } finally { await rm(output, { recursive: true, force: true }); }
+});
+
+
+test('web kit injects streaming UGC requests with caller cancellation and terminal output', async () => {
+  const output = await mkdtemp(join(tmpdir(), 'web-kit-stream-'));
+  const controller = new AbortController();
+  let requestSignal;
+  try {
+    await writeFile(join(output, 'crawl.json'), JSON.stringify(crawl));
+    const result = await generateWebKit(output, { url: 'https://example.com/', runId: 'stream', env: {}, signal: controller.signal,
+      ads: async () => ({ manifest: { status: 'complete' } }),
+      campaigns: async () => ({ manifest: { status: 'complete' } }),
+      ugc: async options => {
+        const response = await options.request({ model: 'gpt-6-luna' }, { apiKey: 'fixture-key', fetchImpl: options.fetchImpl });
+        assert.equal(response.status, 'completed');
+        return { scripts: [{ id: 'S1' }] };
+      },
+      render: () => 'Generated scripts',
+      fetchImpl: async (url, init) => {
+        assert.equal(url, 'https://api.openai.com/v1/responses');
+        assert.equal(JSON.parse(init.body).stream, true);
+        requestSignal = init.signal;
+        return new Response('data: {"type":"response.completed","response":{"status":"completed","output":[]}}\n\n');
+      }
+    });
+    assert.equal(result.status, 'complete');
+    controller.abort();
+    assert.equal(requestSignal.aborted, true);
   } finally { await rm(output, { recursive: true, force: true }); }
 });

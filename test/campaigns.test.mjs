@@ -17,6 +17,7 @@ function fixture(channel) {
   result.calendar.forEach((d, i) => { d.day = i + 1; d.contentId = result.posts[i % result.posts.length].id; });
   return result;
 }
+const streamed = body => new Response(`event: response.${body.status}\ndata: ${JSON.stringify({ type: `response.${body.status}`, response: body })}\n\n`, { headers: { 'content-type': 'text/event-stream' } });
 const response = (channel, finishReason = 'STOP') => Response.json({ candidates: [{ finishReason, content: { parts: [{ text: JSON.stringify(fixture(channel)) }] } }] });
 async function temp(t) { const dir = await mkdtemp(join(tmpdir(), 'campaign-test-')); t.after(() => rm(dir, { recursive: true, force: true })); return dir; }
 
@@ -72,7 +73,7 @@ test('OpenAI Luna generates both campaigns through strict Responses output', asy
   const { manifest, runDir } = await generateCampaigns({ provider: 'openai', prompt: 'Observed product and launch brief', apiKey: 'openai-test-secret', outputDir: await temp(t),
     fetchImpl: async (url, init) => {
       calls.push({ url, init, payload: JSON.parse(init.body) });
-      return Response.json({ status: 'completed', usage: { input_tokens: 20, output_tokens: 400 }, output: [{ type: 'message', content: [{ type: 'output_text', text: JSON.stringify(fixture(calls.length === 1 ? 'x' : 'reddit')) }] }] });
+      return streamed({ status: 'completed', usage: { input_tokens: 20, output_tokens: 400 }, output: [{ type: 'message', content: [{ type: 'output_text', text: JSON.stringify(fixture(calls.length === 1 ? 'x' : 'reddit')) }] }] });
     } });
   assert.equal(manifest.status, 'complete');
   assert.equal(manifest.provider, 'openai');
@@ -81,6 +82,7 @@ test('OpenAI Luna generates both campaigns through strict Responses output', asy
   assert.ok(calls.every(call => call.url === 'https://api.openai.com/v1/responses'));
   assert.ok(calls.every(call => call.init.headers.Authorization === 'Bearer openai-test-secret'));
   assert.ok(calls.every(call => call.payload.model === 'gpt-6-luna' && call.payload.store === false));
+  assert.ok(calls.every(call => call.payload.stream === true && call.payload.reasoning.effort === 'none'));
   assert.equal(calls[0].payload.text.format.strict, true);
   assert.deepEqual(calls[0].payload.text.format.schema, campaignSchema('x'));
   assert.equal(manifest.campaigns[0].usage.output_tokens, 400);
@@ -90,16 +92,17 @@ test('OpenAI Luna generates both campaigns through strict Responses output', asy
 test('incomplete OpenAI campaign output is marked failed without saving drafts or retrying', async t => {
   let calls = 0;
   const { manifest, runDir } = await generateCampaigns({ provider: 'openai', prompt: 'Product', channels: ['x'], apiKey: 'fixture-key', outputDir: await temp(t),
-    fetchImpl: async () => { calls++; return Response.json({ status: 'incomplete', output: [] }); } });
+    fetchImpl: async () => { calls++; return streamed({ status: 'incomplete', output: [], usage: { input_tokens: 50, output_tokens: 16384 } }); } });
   assert.equal(calls, 1);
   assert.equal(manifest.status, 'failed');
   assert.match(manifest.campaigns[0].error, /did not finish/);
+  assert.equal(manifest.campaigns[0].attempts[0].usage.output_tokens, 16384);
   assert.deepEqual(await readdir(runDir), ['manifest.json']);
 });
 
 test('resume retries only the failed channel and retains its original error', async t => {
   let initialCalls = 0;
-  const reply = channel => Response.json({ status: 'completed', output: [{ type: 'message', content: [{ type: 'output_text', text: JSON.stringify(fixture(channel)) }] }] });
+  const reply = channel => streamed({ status: 'completed', output: [{ type: 'message', content: [{ type: 'output_text', text: JSON.stringify(fixture(channel)) }] }] });
   const first = await generateCampaigns({ provider: 'openai', prompt: 'Product', apiKey: 'fixture-key', outputDir: await temp(t), fetchImpl: async () => ++initialCalls === 1 ? Response.json({}, { status: 503 }) : reply('reddit') });
   const preserved = await readFile(join(first.runDir, 'reddit-campaign.md'), 'utf8');
   let retryCalls = 0;

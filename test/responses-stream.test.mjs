@@ -18,3 +18,9 @@ test('truncated streams fail rather than accepting partial output', async () => 
 test('stream failures redact credentials and preserve transport code', async () => {
   await assert.rejects(streamResponse({}, { apiKey: 'fixture-key', fetchImpl: async () => { throw new Error('fixture-key failed', { cause: { code: 'ECONNRESET' } }); } }), error => !error.message.includes('fixture-key') && error.causeCode === 'ECONNRESET');
 });
+
+
+test('HTTP failures retain status without exposing the response body', async () => {
+  await assert.rejects(streamResponse({}, { apiKey: 'fixture-key', fetchImpl: async () => Response.json({ error: 'fixture-key private body' }, { status: 429 }) }),
+    error => error.status === 429 && !error.message.includes('fixture-key') && !error.message.includes('private body'));
+});
