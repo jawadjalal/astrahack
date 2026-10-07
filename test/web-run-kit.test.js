@@ -5,6 +5,25 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { generateWebKit, marketingReport, namespaceKitOps, publishWebKit } from '../src/web-run-kit.js';
 
+test('kit publisher rejects redirected and HTML responses before uploading or posting', async () => {
+  for (const bad of [
+    () => new Response(null, { status: 301, headers: { location: '/canvas' } }),
+    () => new Response('<html>Wrong application</html>', { headers: { 'content-type': 'text/html' } }),
+    () => Object.defineProperty(Response.json({ ops: [] }), 'redirected', { value: true })
+  ]) {
+    let calls = 0;
+    await assert.rejects(publishWebKit({}, { output: '/tmp', canvasUrl: 'https://canvas.example/astrahack', runId: 'route-test', board: 'route-test',
+      fetchImpl: async (url, init) => {
+        calls++;
+        assert.equal(init.redirect, 'manual');
+        assert.equal(new URL(url).searchParams.get('board'), 'route-test');
+        return bad();
+      }
+    }), /redirected|non-JSON/);
+    assert.equal(calls, 1);
+  }
+});
+
 const crawl = { product: { title: 'Example product', url: 'https://example.com/', text: 'An observed service.' },
   pages: [{ url: 'https://example.com/', status: 'visited', screenshot: 'screenshots/home.png',
     observation: { title: 'Example product', url: 'https://example.com/', headings: [{ text: 'Observed feature' }], text: 'An observed service.' } }], assets: [] };

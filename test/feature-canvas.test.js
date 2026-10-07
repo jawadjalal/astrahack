@@ -18,19 +18,19 @@ test('uploads selected PNGs and posts existing canvas ops; retry is idempotent',
   const calls = { uploads: 0, ops: 0 };
   const state = { seq: 1, ops: [{ seq: 1, op: { type: 'add_image', id: 'raw-evidence', src: '/uploads/raw.png', x: 100, y: 0, w: 700, h: 500 } }] };
   const fakeFetch = async (url, init) => {
-    if (url.endsWith('/api/state')) return { ok: true, json: async () => state };
+    if (url.endsWith('/api/state')) return Response.json(state);
     if (url.endsWith('/api/upload')) {
       calls.uploads++;
       assert.equal(init.body instanceof FormData, true);
       assert.equal(init.body.get('file').name, 'feature_screen.png');
-      return { ok: true, json: async () => ({ url: `/uploads/test-${calls.uploads}.png` }) };
+      return Response.json({ url: `/uploads/test-${calls.uploads}.png` });
     }
     if (url.endsWith('/api/ops')) {
       calls.ops++;
       const ops = JSON.parse(init.body);
       assert.equal(Array.isArray(ops), true);
       for (const op of ops) state.ops.push({ seq: ++state.seq, op });
-      return { ok: true, json: async () => ({ ok: true, seqs: state.ops.map(item => item.seq), ids: ops.map(op => op.id) }) };
+      return Response.json({ ok: true, seqs: state.ops.map(item => item.seq), ids: ops.map(op => op.id) });
     }
     throw new Error(`Unexpected URL: ${url}`);
   };
@@ -83,9 +83,34 @@ test('rejects a screenshot path outside the manifest directory', async () => {
     const manifestPath = join(dir, 'manifest.json');
     await writeFile(manifestPath, JSON.stringify({ features: [{ id: 'F001', name: 'Bad path', screenshots: [{ path: '../private.png' }] }], gaps: [] }));
     await assert.rejects(publishFeatureCaptures(manifestPath, {
-      fetchImpl: async () => ({ ok: true, json: async () => ({ ops: [] }) })
+      fetchImpl: async () => Response.json({ ops: [] })
     }), /leaves manifest directory/);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+test('redirected and HTML state or upload responses never become successful canvas publication', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'astrahack-canvas-routing-'));
+  try {
+    await writeFile(join(dir, 'screen.png'), png(100, 100));
+    const manifest = join(dir, 'manifest.json');
+    await writeFile(manifest, JSON.stringify({ features: [{ id: 'F1', screenshots: [{ path: 'screen.png' }] }], gaps: [] }));
+    const badResponses = [
+      () => new Response(null, { status: 301, headers: { location: '/canvas' } }),
+      () => new Response('<html>Wrong application</html>', { headers: { 'content-type': 'text/html' } }),
+      () => Object.defineProperty(Response.json({ ops: [] }), 'redirected', { value: true }),
+      () => new Response('invalid-json', { headers: { 'content-type': 'application/json' } })
+    ];
+    for (const path of ['/api/state', '/api/upload']) for (const bad of badResponses) {
+      let writes = 0;
+      await assert.rejects(publishFeatureCaptures(manifest, { canvasUrl: 'https://canvas.example', fetchImpl: async (url, init) => {
+        assert.equal(init.redirect, 'manual');
+        if (url.endsWith('/ops')) writes++;
+        if (url.endsWith(path)) return bad();
+        return Response.json({ ops: [] });
+      } }), /redirected|non-JSON|invalid JSON/);
+      assert.equal(writes, 0);
+    }
+  } finally { await rm(dir, { recursive: true, force: true }); }
 });

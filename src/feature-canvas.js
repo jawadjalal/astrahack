@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { basename, dirname, relative, resolve, sep } from 'node:path';
 import { boardApi } from '../canvas/src/lib/board.mjs';
+import { readCanvasJson } from './canvas-response.js';
 
 const defaultCanvasUrl = 'http://localhost:3000';
 
@@ -23,9 +24,9 @@ function pngSize(bytes) {
 
 async function canvasRequest(fetchImpl, base, path, init, board) {
   let response;
-  try { response = await fetchImpl(boardApi(base, board)(path.replace(/^\/api/, '')), init); }
+  try { response = await fetchImpl(boardApi(base, board)(path.replace(/^\/api/, '')), { ...init, redirect: 'manual' }); }
   catch (error) { throw new Error(`Cannot reach canvas at ${base}: ${error.message}`); }
-  const body = await response.json().catch(() => ({}));
+  const body = await readCanvasJson(response);
   if (!response.ok || body.ok === false) throw new Error(`Canvas ${path} returned HTTP ${response.status}: ${body.error || 'unknown error'}`);
   return body;
 }
@@ -42,6 +43,7 @@ export async function publishFeatureCaptures(manifestPath, options = {}) {
   const fetchImpl = options.fetchImpl || fetch;
   const runId = createHash('sha256').update(`${absoluteManifest}:${manifest.createdAt || ''}`).digest('hex').slice(0, 8);
   const state = await canvasRequest(fetchImpl, base, '/api/state', undefined, options.board);
+  if (!Array.isArray(state.ops)) throw new Error('Canvas state response is missing its ops array.');
   const existing = new Map();
   for (const envelope of state.ops || []) {
     const op = envelope.op || {};
