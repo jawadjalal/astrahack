@@ -1,6 +1,7 @@
 // Media intake: validate -> upload (multipart or direct-to-Blob) -> add_image / add_video op.
 // Pure helpers (classifyMedia, chooseStrategy, fitSize, layoutRow) are exported so they can be unit tested
 // in node (`npx tsx --test src/lib/upload.test.ts`); everything browser-only is behind function calls.
+import { authHeaders } from "./roomToken";
 import { withBase } from "./base";
 import { boardUrl } from "./boardClient";
 
@@ -314,7 +315,7 @@ export function labelFor(input: MediaInput): string {
 async function postOps(ops: Record<string, unknown>[]): Promise<{ ids?: string[] }> {
   const res = await fetch(boardUrl("/api/ops"), {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...authHeaders() },
     body: JSON.stringify(ops.length === 1 ? ops[0] : ops),
   });
   const body = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; ids?: string[] };
