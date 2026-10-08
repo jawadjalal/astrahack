@@ -7,7 +7,9 @@ import { chrome, fitBox } from "./fit";
 export const SECTIONS: { id: string; label: string; prefixes: string[] }[] = [
   { id: "overview", label: "Overview", prefixes: ["rd-overview-label", "rd-s-"] },
   { id: "findings", label: "Findings", prefixes: ["rd-findings-label", "rd-f-"] },
-  { id: "diagrams", label: "Diagrams", prefixes: ["rd-diagrams-label", "rd-g-"] },
+  { id: "diagrams", label: "Diagrams", prefixes: ["rd-g-"] },
+  { id: "charts", label: "Charts", prefixes: ["rd-b-"] },
+  { id: "screens", label: "Screens", prefixes: ["rd-v-"] },
   { id: "screenshots", label: "Screenshots", prefixes: ["rd-shots-label", "rd-p-"] },
   { id: "opportunities", label: "Opportunities", prefixes: ["rd-opps-label", "rd-c-", "rd-k-"] },
   { id: "sketches", label: "Sketches", prefixes: ["rd-sketch", "rd-sk-"] },
@@ -32,11 +34,14 @@ export const availableSections = (editor: Editor) =>
 
 let last = { id: "", i: -1 };
 
-/** Frames of the diagrams, reading order (top to bottom, then left to right). */
-function diagramFrames(editor: Editor): Box[] {
+const STEPPED: Record<string, string> = { diagrams: "g", charts: "b", screens: "v" };
+
+/** Frames of one kind of visual, reading order (top to bottom, then left to right). */
+function visualFrames(editor: Editor, kind: string): Box[] {
+  const re = new RegExp(`^shape:rd-${kind}-.+-frame$`);
   const boxes: Box[] = [];
   for (const id of editor.getCurrentPageShapeIds()) {
-    if (!/^shape:rd-g-.+-frame$/.test(String(id))) continue;
+    if (!re.test(String(id))) continue;
     const b = editor.getShapePageBounds(id);
     if (b) boxes.push(b.clone());
   }
@@ -44,12 +49,12 @@ function diagramFrames(editor: Editor): Box[] {
 }
 
 /**
- * Fly to a section ("home" = title + overview). "diagrams" steps through them one at a time, so each is readable.
+ * Fly to a section ("home" = title + overview). Diagrams, charts and screens step through one frame at a time, so each is readable.
  * A lane taller than the screen opens at its top, at the zoom that fits its width. Returns false if it is not on the board.
  */
 export function goToSection(editor: Editor, id: string): boolean {
-  if (id === "diagrams") {
-    const frames = diagramFrames(editor);
+  if (STEPPED[id]) {
+    const frames = visualFrames(editor, STEPPED[id]);
     if (!frames.length) return false;
     last = { id, i: last.id === id ? (last.i + 1) % frames.length : 0 };
     fitBox(editor, frames[last.i].expandBy(70), { maxZoom: 1 });

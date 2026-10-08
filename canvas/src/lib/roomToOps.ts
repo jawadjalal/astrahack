@@ -42,12 +42,21 @@ export function roomFromPayload(p: any): RoomIn {
 }
 
 export interface DiagramNode { id: string; text: string; sub?: string; color?: string; kind?: "box" | "oval" }
+export interface ChartRow { label: string; value: number; /** shown after the bar, e.g. "4.0" or "~3,200" */ display?: string; /** small line under the label */ sub?: string; /** orange to highlight the row the chart is about, grey otherwise */ color?: string }
+export interface GalleryImage { src: string; caption: string; /** a hand-written remark under the caption */ note?: string }
 export interface DiagramIn {
   id: string;
   title: string;
-  /** flow: left to right, wrapping. cycle: clockwise ring, last arrow closes it. hub: the first node in the middle, the rest around it. */
-  layout: "flow" | "cycle" | "hub";
-  nodes: DiagramNode[];
+  /**
+   * flow: left to right, wrapping. cycle: clockwise ring, last arrow closes it. hub: the first node in the middle, the rest around it.
+   * bars: a horizontal bar chart from `rows`. gallery: a row of screenshots from `images`, numbered, with captions.
+   */
+  layout: "flow" | "cycle" | "hub" | "bars" | "gallery";
+  nodes?: DiagramNode[];
+  rows?: ChartRow[];
+  /** bars: the value a full-width bar stands for (default: the largest row) */
+  max?: number;
+  images?: GalleryImage[];
   /** default: the chain for flow, the ring for cycle, centre -> each spoke for hub */
   edges?: { from: string; to: string; label?: string }[];
   note?: string;
@@ -81,6 +90,28 @@ function textHeight(text: string, width: number, charW: number, lineH: number): 
 const bodyH = (t: string, w: number) => textHeight(t, w, 10.4, 25);
 const titleH = (t: string, w: number) => textHeight(t, w, 14.5, 31);
 const monoH = (t: string, w: number) => textHeight(t, w, 12.6, 25);
+
+/** A card on the board shows the opening of a long note; the full text lives on the room's Notes page. */
+const BOARD_BODY_MAX = 620;
+function boardClip(raw: unknown): string {
+  const t = String(raw ?? "").replace(/\r\n?/g, "\n").trim();
+  if (t.length <= BOARD_BODY_MAX) return t;
+  // whole paragraphs while they fit, else cut the first one at a sentence
+  const paras = t.split(/\n{2,}/);
+  let out = "";
+  for (const p of paras) {
+    const next = out ? `${out}\n\n${p}` : p;
+    if (next.length > BOARD_BODY_MAX) break;
+    out = next;
+  }
+  if (!out) {
+    const cut = t.slice(0, BOARD_BODY_MAX);
+    const end = cut.lastIndexOf(". ");
+    out = end > BOARD_BODY_MAX * 0.5 ? cut.slice(0, end + 1) : cut.trimEnd();
+  }
+  return `${out}\n…more on the Notes page`;
+}
+const WIDE_AT = 460; // a note this long gets a card two columns wide
 
 const visible = <T extends RoomRow>(rows: T[] | undefined): T[] =>
   (rows ?? []).filter((r) => r.clientVisible !== false && !r.placeholder).sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
@@ -180,6 +211,86 @@ function drawDiagram(d: DiagramIn, ox: number, oy: number, idOf: (n: string) => 
   return { steps: [first, nodeOps, arrows], w: frameW, h: frameH + noteH };
 }
 
+// ---------------------------------------------------------------- charts and galleries
+
+const BAR_W = 760;
+const LABEL_W = 340;
+const BAR_H = 46;
+const ROW_PITCH = 88;
+const VALUE_W = 260;
+
+/** A horizontal bar chart: one measure, rows in the order given (sort them), the value written at the end of each bar. */
+function drawBars(d: DiagramIn, ox: number, oy: number, idOf: (n: string) => string): { steps: Op[][]; w: number; h: number } {
+  const rows = (d.rows ?? []).slice(0, 12);
+  const key = short(d.id);
+  const id = (n: string) => idOf(`b-${key}-${n}`);
+  const TOP = 96;
+  const max = d.max && d.max > 0 ? d.max : Math.max(...rows.map((r) => r.value), 1);
+  const w = LABEL_W + 28 + BAR_W + VALUE_W;
+  const h = Math.max(rows.length, 1) * ROW_PITCH;
+  const frameW = w + FRAME_PAD * 2;
+  const frameH = h + FRAME_PAD * 2 + TOP - 30;
+  const bx = ox + FRAME_PAD;
+  const by = oy + FRAME_PAD + TOP - 20;
+  const note = d.note ? clip(d.note, 260) : "";
+  const noteH = note ? bodyH(note, frameW - FRAME_PAD * 2) + 24 : 0;
+
+  const first: Op[] = [
+    { type: "add_shape", id: id("frame"), kind: "rectangle", x: ox, y: oy, w: frameW, h: frameH + noteH, color: "grey" },
+    { type: "add_text", id: id("title"), text: clip(d.title, 70), x: ox + FRAME_PAD, y: oy + 26, w: frameW - FRAME_PAD * 2, size: "l", font: "draw", color: "black" },
+  ];
+  if (note) first.push({ type: "add_text", id: id("note"), text: note, x: ox + FRAME_PAD, y: oy + frameH + 4, w: frameW - FRAME_PAD * 2, size: "s", font: "draw", color: "orange" });
+  const marks: Op[] = [];
+  const fills: Op[] = [];
+  rows.forEach((r, i) => {
+    const y = by + i * ROW_PITCH;
+    const bw = Math.max(10, Math.round((Math.max(r.value, 0) / max) * BAR_W));
+    const color = asColor(r.color, "grey");
+    marks.push({ type: "add_text", id: id(`l${i}`), text: clip(r.label, 44), x: bx, y: y + (r.sub ? 0 : 8), w: LABEL_W, size: "m", font: "draw", color: "black", align: "end" } as Op);
+    if (r.sub) marks.push({ type: "add_text", id: id(`s${i}`), text: clip(r.sub, 48), x: bx, y: y + 34, w: LABEL_W, size: "s", font: "mono", color: "grey", align: "end" } as Op);
+    marks.push({ type: "add_shape", id: id(`r${i}`), kind: "rectangle", x: bx + LABEL_W + 28, y, w: bw, h: BAR_H, color });
+    marks.push({ type: "add_text", id: id(`v${i}`), text: clip(r.display ?? String(r.value), 24), x: bx + LABEL_W + 28 + bw + 18, y: y + 8, w: VALUE_W - 20, size: "m", font: "draw", color: color === "grey" ? "black" : color });
+    fills.push({ type: "update", id: id(`r${i}`), props: { fill: "pattern" } });
+  });
+  return { steps: [first, marks, fills], w: frameW, h: frameH + noteH };
+}
+
+/** A row of screenshots with a numbered caption under each, and an optional hand-written remark. */
+async function drawGallery(d: DiagramIn, ox: number, oy: number, idOf: (n: string) => string, measure?: MeasureImage): Promise<{ steps: Op[][]; w: number; h: number }> {
+  const imgs = (d.images ?? []).filter((i) => i.src).slice(0, 10);
+  const key = short(d.id);
+  const id = (n: string) => idOf(`v-${key}-${n}`);
+  const TOP = 96;
+  const sizes = await Promise.all(imgs.map((i) => (measure ? measure(i.src).catch(() => null) : Promise.resolve(null))));
+  const ratios = sizes.map((s) => (s && s.w > 0 ? Math.min(s.h / s.w, 2.4) : 1.6));
+  const portrait = ratios.reduce((a, b) => a + b, 0) / Math.max(ratios.length, 1) > 1.15;
+  const gw = portrait ? 300 : 560;
+  const gap = 44;
+  const heights = ratios.map((r) => Math.round(gw * r));
+  const imgH = Math.max(...heights, 120);
+  const capH = Math.max(...imgs.map((i, n) => titleH(`${n + 1}. ${clip(i.caption, 90)}`, gw, ) + 10), 40);
+  const noteH = Math.max(...imgs.map((i) => (i.note ? bodyH(clip(i.note, 200), gw) + 14 : 0)), 0);
+  const w = imgs.length * gw + Math.max(imgs.length - 1, 0) * gap;
+  const frameW = w + FRAME_PAD * 2;
+  const frameH = TOP + imgH + 20 + capH + noteH + FRAME_PAD;
+  const bx = ox + FRAME_PAD;
+  const by = oy + TOP;
+
+  const first: Op[] = [
+    { type: "add_shape", id: id("frame"), kind: "rectangle", x: ox, y: oy, w: frameW, h: frameH, color: "grey" },
+    { type: "add_text", id: id("title"), text: clip(d.title, 80), x: ox + FRAME_PAD, y: oy + 26, w: frameW - FRAME_PAD * 2, size: "l", font: "draw", color: "black" },
+  ];
+  const pics: Op[] = [];
+  imgs.forEach((im, i) => {
+    const x = bx + i * (gw + gap);
+    pics.push({ type: "add_image", id: id(`i${i}`), src: im.src, x, y: by, w: gw, h: heights[i] });
+    pics.push({ type: "add_shape", id: id(`r${i}`), kind: "rectangle", x, y: by, w: gw, h: heights[i], color: "black" }); // an ink border over the picture
+    pics.push({ type: "add_text", id: id(`c${i}`), text: `${i + 1}. ${clip(im.caption, 90)}`, x, y: by + imgH + 20, w: gw, size: "m", font: "draw", color: "black" });
+    if (im.note) pics.push({ type: "add_text", id: id(`n${i}`), text: clip(im.note, 200), x, y: by + imgH + 20 + capH, w: gw, size: "s", font: "draw", color: "orange" });
+  });
+  return { steps: [first, pics], w: frameW, h: frameH };
+}
+
 export async function roomToSteps(room: RoomIn, measure?: MeasureImage): Promise<Op[][]> {
   const steps: Op[][] = [];
   const idOf = (name: string) => `${ROOM_PREFIX}${name}`.slice(0, 64);
@@ -225,15 +336,25 @@ export async function roomToSteps(room: RoomIn, measure?: MeasureImage): Promise
   const label = (labelId: string, text: string, x: number, y: number, color: Color = "black") =>
     push([{ type: "add_text", id: idOf(labelId), text, x, y, w: 520, size: "xl", font: "draw", color }]);
 
-  /** Lay cards into `cols` columns, always into the shortest one. Returns the lane's bottom edge. */
+  /** Lay cards into `cols` columns, always into the shortest one; long notes span two. Returns the lane's bottom edge. */
   async function masonry(
     x0: number, y0: number, cols: number, items: { id: string; color: Color; title: string; body: string; link?: string | null; image?: string | null }[],
   ): Promise<number> {
     const heights = Array.from({ length: cols }, () => y0);
     for (const it of items) {
-      const c = heights.indexOf(Math.min(...heights));
-      const h = await card(idOf(it.id), x0 + c * (COL_W + GAP), heights[c], COL_W, it.color, it.title, it.body, { link: it.link, image: it.image });
-      heights[c] += h + GAP;
+      const wide = cols >= 2 && it.body.length > WIDE_AT;
+      let c = 0;
+      if (wide) {
+        let best = Infinity;
+        for (let i = 0; i + 1 < cols; i++) { const m = Math.max(heights[i], heights[i + 1]); if (m < best) { best = m; c = i; } }
+      } else {
+        c = heights.indexOf(Math.min(...heights));
+      }
+      const y = wide ? Math.max(heights[c], heights[c + 1]) : heights[c];
+      const w = wide ? COL_W * 2 + GAP : COL_W;
+      const h = await card(idOf(it.id), x0 + c * (COL_W + GAP), y, w, it.color, it.title, it.body, { link: it.link, image: it.image });
+      heights[c] = y + h + GAP;
+      if (wide) heights[c + 1] = y + h + GAP;
     }
     return Math.max(y0, ...heights) - GAP;
   }
@@ -262,13 +383,13 @@ export async function roomToSteps(room: RoomIn, measure?: MeasureImage): Promise
 
   if (sections.length) {
     label("overview-label", "Overview", overviewX, -8, "orange");
-    const bottom = await masonry(overviewX, top, 2, sections.map((s) => ({ id: `s-${short(s.id)}`, color: "black" as Color, title: clip(s.title, 140), body: clip(s.body, 4000) })));
+    const bottom = await masonry(overviewX, top, 2, sections.map((s) => ({ id: `s-${short(s.id)}`, color: "black" as Color, title: clip(s.title, 140), body: boardClip(s.body) })));
     laneBottom = Math.max(laneBottom, bottom);
   }
   if (findings.length) {
     label("findings-label", "Findings", findingsX, -8, "blue");
     const bottom = await masonry(findingsX, top, 2, findings.map((f) => ({
-      id: `f-${short(f.id)}`, color: "blue" as Color, title: clip(f.title, 140), body: clip(f.body, 4000), link: f.href, image: f.imageUrl,
+      id: `f-${short(f.id)}`, color: "blue" as Color, title: clip(f.title, 140), body: boardClip(f.body), link: f.href, image: f.imageUrl,
     })));
     laneBottom = Math.max(laneBottom, bottom);
   }
@@ -285,19 +406,22 @@ export async function roomToSteps(room: RoomIn, measure?: MeasureImage): Promise
   }
 
   // ---- diagrams: flows, cycles and hubs, two or three to a row ----
-  const diagrams = (room.diagrams ?? []).filter((d) => d && Array.isArray(d.nodes) && d.nodes.length > 1);
+  const diagrams = (room.diagrams ?? []).filter((d) =>
+    d && ((d.layout === "bars" && (d.rows?.length ?? 0) > 0) || (d.layout === "gallery" && (d.images?.length ?? 0) > 0) || (Array.isArray(d.nodes) && d.nodes.length > 1)));
+  const draw = async (d: DiagramIn, x: number, y: number) =>
+    d.layout === "bars" ? drawBars(d, x, y, idOf) : d.layout === "gallery" ? drawGallery(d, x, y, idOf, measure) : drawDiagram(d, x, y, idOf);
   let belowTop = laneBottom;
   if (diagrams.length) {
     const gy = laneBottom + LANE_GAP;
-    label("diagrams-label", "Diagrams", 0, gy - 8, "green");
-    const ROW_MAX = 2900;
+    label("diagrams-label", "Visuals", 0, gy - 8, "green");
+    const ROW_MAX = 3500;
     let x = 0;
     let y = gy + LABEL_H;
     let rowH = 0;
     for (const d of diagrams) {
-      const probe = drawDiagram(d, 0, 0, idOf);
+      const probe = await draw(d, 0, 0);
       if (x > 0 && x + probe.w > ROW_MAX) { x = 0; y += rowH + 130; rowH = 0; }
-      const drawn = drawDiagram(d, x, y, idOf);
+      const drawn = await draw(d, x, y);
       for (const step of drawn.steps) push(step);
       x += drawn.w + 130;
       rowH = Math.max(rowH, drawn.h);
@@ -326,7 +450,7 @@ export async function roomToSteps(room: RoomIn, measure?: MeasureImage): Promise
       for (let at = 0; at < mine.length; at += PER_ROW) {
         let rowH = 0;
         for (const [n, c] of mine.slice(at, at + PER_ROW).entries()) {
-          const h = await card(idOf(`k-${short(c.id)}`), n * (COL_W + GAP), y, COL_W, color, clip(c.title, 140), clip(c.body, 4000));
+          const h = await card(idOf(`k-${short(c.id)}`), n * (COL_W + GAP), y, COL_W, color, clip(c.title, 140), boardClip(c.body));
           rowH = Math.max(rowH, h);
         }
         y += rowH + GAP;
