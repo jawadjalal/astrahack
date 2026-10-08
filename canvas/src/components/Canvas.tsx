@@ -234,15 +234,16 @@ export default function Canvas({ board: boardProp, restoreSavedFocus = false, re
         </>
       )}
 
+      {!room && (
       <div className="ig-brand">
         <img src={withBase("/ignura/astra/astra-mark.svg")} width={26} height={26} alt="" draggable={false} />
-        <span className="ig-brand-word">{room ? "Ignura" : name}</span>
+        <span className="ig-brand-word">{name}</span>
         <span className={`ig-status is-${status}`} role="status">
           <i />
           {status === "connected" ? "live" : status === "reconnecting" ? "reconnecting" : "connecting"}
-          {!room && <small>{opCount} {opCount === 1 ? "op" : "ops"}</small>}
+          <small>{opCount} {opCount === 1 ? "op" : "ops"}</small>
         </span>
-        {!room && <button
+        <button
           type="button"
           className="ig-board"
           title={`Board: ${board}. Click to copy a link to exactly this board.`}
@@ -250,8 +251,9 @@ export default function Canvas({ board: boardProp, restoreSavedFocus = false, re
           style={{ font: "inherit", fontSize: 12, opacity: 0.7, background: "none", border: 0, cursor: "pointer", padding: "0 4px" }}
         >
           {boardLabel(board)}
-        </button>}
+        </button>
       </div>
+      )}
 
       {present && (
         <button type="button" className="ig-exit" onClick={() => setPresent(false)}>

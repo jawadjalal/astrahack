@@ -2,11 +2,12 @@
 // The parent page (ignura.com/canvas) asks the board to fly to one, and learns which ones exist.
 import type { Editor } from "tldraw";
 import { Box } from "tldraw";
-import { fitBox } from "./fit";
+import { chrome, fitBox } from "./fit";
 
 export const SECTIONS: { id: string; label: string; prefixes: string[] }[] = [
   { id: "overview", label: "Overview", prefixes: ["rd-overview-label", "rd-s-"] },
   { id: "findings", label: "Findings", prefixes: ["rd-findings-label", "rd-f-"] },
+  { id: "diagrams", label: "Diagrams", prefixes: ["rd-diagrams-label", "rd-g-"] },
   { id: "screenshots", label: "Screenshots", prefixes: ["rd-shots-label", "rd-p-"] },
   { id: "opportunities", label: "Opportunities", prefixes: ["rd-opps-label", "rd-c-", "rd-k-"] },
   { id: "sketches", label: "Sketches", prefixes: ["rd-sketch", "rd-sk-"] },
@@ -29,11 +30,42 @@ function boundsFor(editor: Editor, prefixes: string[]): Box | null {
 export const availableSections = (editor: Editor) =>
   SECTIONS.filter((s) => boundsFor(editor, s.prefixes)).map(({ id, label }) => ({ id, label }));
 
-/** Fly to a section ("home" = title + overview). Returns false if it is not on the board. */
+let last = { id: "", i: -1 };
+
+/** Frames of the diagrams, reading order (top to bottom, then left to right). */
+function diagramFrames(editor: Editor): Box[] {
+  const boxes: Box[] = [];
+  for (const id of editor.getCurrentPageShapeIds()) {
+    if (!/^shape:rd-g-.+-frame$/.test(String(id))) continue;
+    const b = editor.getShapePageBounds(id);
+    if (b) boxes.push(b.clone());
+  }
+  return boxes.sort((a, b) => Math.round(a.y / 200) - Math.round(b.y / 200) || a.x - b.x);
+}
+
+/**
+ * Fly to a section ("home" = title + overview). "diagrams" steps through them one at a time, so each is readable.
+ * A lane taller than the screen opens at its top, at the zoom that fits its width. Returns false if it is not on the board.
+ */
 export function goToSection(editor: Editor, id: string): boolean {
+  if (id === "diagrams") {
+    const frames = diagramFrames(editor);
+    if (!frames.length) return false;
+    last = { id, i: last.id === id ? (last.i + 1) % frames.length : 0 };
+    fitBox(editor, frames[last.i].expandBy(70), { maxZoom: 1 });
+    return true;
+  }
+  last = { id, i: 0 };
   const prefixes = id === "home" ? HOME : SECTIONS.find((s) => s.id === id)?.prefixes;
   const box = prefixes ? boundsFor(editor, prefixes) : null;
   if (!box) return false;
-  fitBox(editor, box.clone().expandBy(60), { maxZoom: 1 });
+  const padded = box.clone().expandBy(60);
+  const vp = editor.getViewportScreenBounds();
+  const z = Math.min(1, (vp.w - 80) / padded.w);
+  if (padded.h * z <= vp.h - chrome.top - chrome.bottom) {
+    fitBox(editor, padded, { maxZoom: 1 });
+  } else {
+    editor.setCamera({ x: vp.w / 2 / z - padded.center.x, y: (chrome.top + 20) / z - padded.y, z }, { animation: { duration: 420 } });
+  }
   return true;
 }
