@@ -108,3 +108,60 @@ test("diagram boxes sit inside their frame and never overlap each other", async 
     assert.ok(a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y, `${a.id} overlaps ${b.id}`);
   }
 });
+
+const visualRoom = {
+  name: "V", blurb: "", columns: [], cards: [], findings: [], sections: [], drawings: [],
+  diagrams: [
+    { id: "stars", title: "Store ratings", layout: "bars", max: 5, rows: [
+      { label: "Loop", value: 4.6, display: "4.6", sub: "1k ratings" },
+      { label: "Rivet iOS", value: 4.0, display: "4.0", color: "orange" },
+      { label: "Rivet Play", value: 3.7, display: "3.7", color: "orange" },
+    ] },
+    { id: "store", title: "The store listing", layout: "gallery", images: [
+      { src: "https://x.test/1.png", caption: "Where people pick", note: "Vague" },
+      { src: "https://x.test/2.png", caption: "Get introduced" },
+      { src: "https://x.test/3.png", caption: "Verified profiles" },
+    ] },
+  ],
+};
+
+test("bars: width follows the value, the highlight is orange, values are written out", async () => {
+  const ops = (await roomToOps(roomFromPayload(visualRoom))).filter((o) => o.id && o.id.startsWith("rd-b-stars-"));
+  for (const op of ops) assert.ok(OpSchema.safeParse(op).success, JSON.stringify(op));
+  const bars = ops.filter((o) => o.type === "add_shape" && /-r\d$/.test(o.id));
+  assert.equal(bars.length, 3);
+  assert.ok(bars[0].w > bars[1].w && bars[1].w > bars[2].w, "longest value, longest bar");
+  assert.equal(Math.round((bars[0].w / bars[1].w) * 100) / 100, Math.round((4.6 / 4.0) * 100) / 100);
+  assert.deepEqual(bars.map((b) => b.color), ["grey", "orange", "orange"]);
+  assert.ok(ops.some((o) => o.type === "add_text" && o.text === "3.7"));
+  assert.equal(ops.filter((o) => o.type === "update" && o.props.fill === "pattern").length, 3);
+});
+
+test("gallery: images keep their ratio, in a row, each inside the frame, with numbered captions", async () => {
+  const ops = await roomToOps(roomFromPayload(visualRoom), async () => ({ w: 1000, h: 2000 }));
+  const mine = ops.filter((o) => o.id && o.id.startsWith("rd-v-store-"));
+  for (const op of mine) assert.ok(OpSchema.safeParse(op).success, JSON.stringify(op));
+  const imgs = mine.filter((o) => o.type === "add_image");
+  const frame = mine.find((o) => o.id.endsWith("-frame"));
+  assert.equal(imgs.length, 3);
+  for (const i of imgs) {
+    assert.equal(i.h / i.w, 2);
+    assert.ok(i.x >= frame.x && i.x + i.w <= frame.x + frame.w && i.y + i.h <= frame.y + frame.h);
+  }
+  assert.ok(imgs[0].x + imgs[0].w < imgs[1].x);
+  assert.ok(mine.some((o) => o.type === "add_text" && o.text === "2. Get introduced"));
+});
+
+test("a long note gets a wide card and is trimmed on the board", async () => {
+  const long = { name: "L", blurb: "", columns: [], cards: [], findings: [], drawings: [], sections: [
+    { id: "a", title: "Short", body: "Hi.", position: 0, client_visible: true },
+    { id: "b", title: "Long", body: "Sentence one is here. ".repeat(160), position: 1, client_visible: true },
+  ] };
+  const ops = await roomToOps(roomFromPayload(long));
+  const rects = ops.filter((o) => o.type === "add_shape");
+  const narrow = rects.find((r) => r.id.includes("-s-a"));
+  const wide = rects.find((r) => r.id.includes("-s-b"));
+  assert.ok(wide.w > narrow.w * 2 - 1, "the long note spans two columns");
+  const body = ops.find((o) => o.id === `${wide.id}-b`).text;
+  assert.ok(body.length < 700 && body.endsWith("more on the Notes page"));
+});
