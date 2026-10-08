@@ -2,6 +2,7 @@ import { OpSchema, type Op } from "@/lib/ops";
 import { appendMany, opId } from "@/server/store";
 import { json, preflight } from "@/server/cors";
 import { boardParams } from "@/server/boardParam";
+import { authorizeRoom } from "@/server/roomAuth";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -11,6 +12,8 @@ export const OPTIONS = preflight;
 export async function POST(req: Request) {
   const bp = boardParams(req);
   if ("error" in bp) return bp.error;
+  const denied = await authorizeRoom(req, bp.board, "write");
+  if (denied) return denied;
   let body: unknown;
   try {
     body = await req.json();

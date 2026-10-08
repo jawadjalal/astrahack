@@ -18,10 +18,16 @@ export type AgentCursor = {
 type Listener = (c: AgentCursor | null) => void;
 
 let current: AgentCursor | null = null;
+let defaultLabel = "Astra";
 let count = 0;
 const listeners = new Set<Listener>();
 
 export const agentBus = {
+  /** The name on the cursor until an op sets its own label. Rooms use "Iggy"; ?agent=<name> can use a person's name. */
+  setDefaultLabel(name: string) {
+    defaultLabel = name;
+    if (current) current = { ...current, label: name };
+  },
   get(): AgentCursor | null {
     return current;
   },
@@ -29,7 +35,7 @@ export const agentBus = {
     current = {
       x,
       y,
-      label: opts.label ?? current?.label ?? "Astra",
+      label: opts.label ?? current?.label ?? defaultLabel,
       instant: !!opts.instant,
       doing: opts.doing,
       speech: opts.speech,

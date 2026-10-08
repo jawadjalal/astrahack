@@ -5,9 +5,11 @@ import { Tldraw, useValue, type Editor, type TLUiComponents } from "tldraw";
 import "tldraw/tldraw.css";
 import { applyEnvelope } from "../lib/applyOp";
 import { withBase } from "../lib/base";
+import { authHeaders, withToken } from "../lib/roomToken";
 import { boardFromLocation, boardLabel, boardShareUrl, boardUrl, setActiveBoard } from "../lib/boardClient";
 import type { Envelope } from "../lib/ops";
 import { activity } from "../lib/activity";
+import { agentBus } from "../lib/agentBus";
 import { makeIguraTheme } from "../lib/ignuraTheme";
 import { fitAll } from "../lib/fit";
 import { useMediaIntake } from "./media/useMediaIntake";
@@ -18,6 +20,7 @@ import { ActivityPanel } from "./ui/ActivityPanel";
 import { AgentAvatar } from "./ui/AgentAvatar";
 import { EmptyState } from "./ui/EmptyState";
 import { IguraStylePanel } from "./ui/IguraStylePanel";
+import { RoomEmpty } from "./ui/RoomEmpty";
 import { RoughDefs } from "./ui/RoughDefs";
 
 type Status = "connecting" | "connected" | "reconnecting";
@@ -45,7 +48,8 @@ const components: TLUiComponents = {
   StylePanel: IguraStylePanel,
 };
 
-export default function Canvas({ board: boardProp, restoreSavedFocus = false }: { board?: string; restoreSavedFocus?: boolean } = {}) {
+/** `room`: an Ignura project room (no agent instructions, no board id on screen). `readOnly`: a visitor on the public link. */
+export default function Canvas({ board: boardProp, restoreSavedFocus = false, readOnly = false, room = false, agentName }: { board?: string; restoreSavedFocus?: boolean; readOnly?: boolean; room?: boolean; agentName?: string } = {}) {
   const board = useMemo(() => boardProp ?? boardFromLocation(), [boardProp]);
   setActiveBoard(board);
   const [editor, setEditor] = useState<Editor | null>(null);
@@ -57,6 +61,8 @@ export default function Canvas({ board: boardProp, restoreSavedFocus = false }: 
   const followRef = useRef(true);
   followRef.current = follow;
   const themes = useMemo(() => ({ default: makeIguraTheme() }), []);
+  const name = agentName || (room ? "Iggy" : "Astra");
+  useEffect(() => { agentBus.setDefaultLabel(name); }, [name]);
 
   const handleMount = useCallback((ed: Editor) => {
     ed.user.updateUserPreferences({ colorScheme: "light" });
@@ -101,7 +107,7 @@ export default function Canvas({ board: boardProp, restoreSavedFocus = false }: 
 
     const connect = () => {
       if (disposed) return;
-      es = new EventSource(boardUrl(`/api/events?since=${lastSeq}`, board));
+      es = new EventSource(withToken(boardUrl(`/api/events?since=${lastSeq}`, board)));
       es.onopen = () => setStatus("connected");
       es.onmessage = (m) => {
         try {
@@ -122,7 +128,7 @@ export default function Canvas({ board: boardProp, restoreSavedFocus = false }: 
     (async () => {
       let savedFocus: Envelope | undefined;
       try {
-        const res = await fetch(boardUrl("/api/state", board), { cache: "no-store" });
+        const res = await fetch(boardUrl("/api/state", board), { cache: "no-store", headers: authHeaders() });
         const state = (await res.json()) as { seq: number; ops: Envelope[] };
         for (const env of state.ops) {
           if (env.op.type === "clear") savedFocus = undefined;
@@ -164,13 +170,13 @@ export default function Canvas({ board: boardProp, restoreSavedFocus = false }: 
 
   // ---- present mode ----
   useEffect(() => {
-    editor?.updateInstanceState({ isReadonly: present });
+    editor?.updateInstanceState({ isReadonly: present || readOnly });
     if (present && editor) {
       editor.selectNone();
       // the chrome is gone: give the content the whole screen
       setTimeout(() => fitAll(editor), 60);
     }
-  }, [editor, present]);
+  }, [editor, present, readOnly]);
 
   // ---- shortcuts: Shift+P present, Shift+F follow, Esc leaves present ----
   useEffect(() => {
@@ -196,7 +202,7 @@ export default function Canvas({ board: boardProp, restoreSavedFocus = false }: 
 
   const clearAll = async () => {
     // resets THIS board only, for everyone watching it
-    await fetch(boardUrl("/api/state", board), { method: "DELETE" });
+    await fetch(boardUrl("/api/state", board), { method: "DELETE", headers: authHeaders() });
   };
 
   const empty = useValue("ig-empty", () => !!editor && editor.getCurrentPageShapeIds().size === 0, [editor]);
@@ -213,9 +219,9 @@ export default function Canvas({ board: boardProp, restoreSavedFocus = false }: 
       {editor && (
         <>
           <AgentAvatar editor={editor} />
-          {ready && empty && <EmptyState board={board} />}
-          {!present && <ActivityPanel editor={editor} />}
-          {!present && (
+          {ready && empty && (room ? <RoomEmpty readOnly={readOnly} /> : <EmptyState board={board} />)}
+          {!present && !room && <ActivityPanel editor={editor} name={name} />}
+          {!present && !readOnly && (
             <Toolbar
               editor={editor}
               follow={follow}
@@ -229,13 +235,13 @@ export default function Canvas({ board: boardProp, restoreSavedFocus = false }: 
 
       <div className="ig-brand">
         <img src={withBase("/ignura/astra/astra-mark.svg")} width={26} height={26} alt="" draggable={false} />
-        <span className="ig-brand-word">Astra</span>
+        <span className="ig-brand-word">{room ? "Ignura" : name}</span>
         <span className={`ig-status is-${status}`} role="status">
           <i />
           {status === "connected" ? "live" : status === "reconnecting" ? "reconnecting" : "connecting"}
-          <small>{opCount} {opCount === 1 ? "op" : "ops"}</small>
+          {!room && <small>{opCount} {opCount === 1 ? "op" : "ops"}</small>}
         </span>
-        <button
+        {!room && <button
           type="button"
           className="ig-board"
           title={`Board: ${board}. Click to copy a link to exactly this board.`}
@@ -243,7 +249,7 @@ export default function Canvas({ board: boardProp, restoreSavedFocus = false }: 
           style={{ font: "inherit", fontSize: 12, opacity: 0.7, background: "none", border: 0, cursor: "pointer", padding: "0 4px" }}
         >
           {boardLabel(board)}
-        </button>
+        </button>}
       </div>
 
       {present && (

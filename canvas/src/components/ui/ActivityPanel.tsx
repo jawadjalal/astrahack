@@ -43,7 +43,7 @@ function focusRow(editor: Editor, row: ActivityRow) {
   fitBox(editor, box, { maxZoom: 1.2, duration: 450, pad: 80 });
 }
 
-export function ActivityPanel({ editor }: { editor: Editor }) {
+export function ActivityPanel({ editor, name = "Astra" }: { editor: Editor; name?: string }) {
   const [rows, setRows] = useState<ActivityRow[]>(activity.get());
   // null = automatic: stays tucked away while the board is empty, opens once the agent has done something
   const [pref, setPref] = useState<boolean | null>(null);
@@ -92,7 +92,7 @@ export function ActivityPanel({ editor }: { editor: Editor }) {
     <aside className="ig-act" aria-label="Agent activity">
       <header className="ig-act-head">
         <img src={withBase("/ignura/astra/astra-mark.svg")} width={22} height={22} alt="" draggable={false} />
-        <h2>What Astra did</h2>
+        <h2>What {name} did</h2>
         <span className="ig-act-count">{rows.length}</span>
         <button type="button" className="ig-icon-btn" onClick={() => setOpen(false)} aria-label="Collapse activity">
           <IconChevron dir="left" />

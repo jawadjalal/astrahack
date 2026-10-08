@@ -1,6 +1,7 @@
 import { list, subscribe } from "@/server/store";
 import { CORS_HEADERS, preflight } from "@/server/cors";
 import { boardParams } from "@/server/boardParam";
+import { authorizeRoom } from "@/server/roomAuth";
 import type { Envelope } from "@/lib/ops";
 
 export const dynamic = "force-dynamic";
@@ -13,6 +14,8 @@ export async function GET(req: Request) {
   const bp = boardParams(req);
   if ("error" in bp) return bp.error;
   const board = bp.board;
+  const denied = await authorizeRoom(req, board, "read");
+  if (denied) return denied;
   const url = new URL(req.url);
   const since = Number(url.searchParams.get("since") ?? 0) || 0;
   const enc = new TextEncoder();
