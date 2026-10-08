@@ -49,7 +49,7 @@ const components: TLUiComponents = {
 };
 
 /** `room`: an Ignura project room (no agent instructions, no board id on screen). `readOnly`: a visitor on the public link. */
-export default function Canvas({ board: boardProp, restoreSavedFocus = false, readOnly = false, room = false, agentName }: { board?: string; restoreSavedFocus?: boolean; readOnly?: boolean; room?: boolean; agentName?: string } = {}) {
+export default function Canvas({ board: boardProp, restoreSavedFocus = false, readOnly = false, room = false, agentName, onEditor }: { board?: string; restoreSavedFocus?: boolean; readOnly?: boolean; room?: boolean; agentName?: string; onEditor?: (editor: Editor) => void } = {}) {
   const board = useMemo(() => boardProp ?? boardFromLocation(), [boardProp]);
   setActiveBoard(board);
   const [editor, setEditor] = useState<Editor | null>(null);
@@ -69,7 +69,8 @@ export default function Canvas({ board: boardProp, restoreSavedFocus = false, re
     ed.updateInstanceState({ isGridMode: true }); // dotted paper
     (window as unknown as { __editor?: Editor }).__editor = ed; // debugging handle
     setEditor(ed);
-  }, []);
+    onEditor?.(ed);
+  }, [onEditor]);
 
   // ---- connection: state snapshot, then SSE with auto-reconnect ----
   useEffect(() => {

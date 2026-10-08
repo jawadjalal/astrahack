@@ -228,9 +228,9 @@ export async function roomToSteps(room: RoomIn, measure?: MeasureImage): Promise
     }
   }
 
-  // open on the top band (title, overview, findings, screenshots) at a readable zoom; the rest is a scroll away
-  const topRight = (shots.length ? findingsX + 2 * COL_W + GAP + LANE_GAP : findings.length ? findingsX : overviewX) + 2 * COL_W + GAP;
-  push([{ type: "focus", box: { x: -40, y: -80, w: topRight + 80, h: topBottom + 140 } }]);
+  // open on the title and the overview at a zoom you can read on a call; the other lanes are one chip away
+  const openRight = (sections.length ? overviewX + 2 * COL_W + GAP : titleW) + 40;
+  push([{ type: "focus", box: { x: -40, y: -90, w: openRight + 40, h: Math.min(topBottom, 1100) + 150 } }]);
 
   return steps;
 }
